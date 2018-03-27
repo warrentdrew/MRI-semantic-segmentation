@@ -107,7 +107,80 @@ def ASPP(mode, filters, strides, initializer, dilation_rate_list, image_level_po
 
         return ASPP_instance
 '''
-idea2: adopt the dilated conv idea to feature extacting in low level
+idea2: adopt the dilated conv idea to feature extracting in low level
 one idea is to merge-and-run, create a local path and a global path
 '''
-def merge_and_run():
+def MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding='same'):
+    # implement a normal residual path in a residual block, which is used as a path in the merge and run net
+    # the path is an improved scheme proposed in http://arxiv.org/pdf/1603.05027v2.pdf
+    # bn -> relu -> conv
+    if mode == '2D':
+        return lambda x : Conv2D(filters,
+                                 kernel_size= kernel_size,
+                                 strides= strides,
+                                 padding= padding,
+                                 kernel_initializer= initializer,
+                                 kernel_regularizer = regularizers.l2(lbda))(
+                                    Activation('relu')(BatchNormalization()(
+                                    Conv2D(filters,
+                                           kernel_size,
+                                           strides,
+                                           padding,
+                                           kernel_initializer= initializer,
+                                           kernel_regularizer= regularizers.l2(lbda))(Activation('relu')(BatchNormalization()(x))))))
+    else:
+        return lambda x: Conv3D(filters,
+                                kernel_size=kernel_size,
+                                strides=strides,
+                                padding=padding,
+                                kernel_initializer=initializer,
+                                kernel_regularizer=regularizers.l2(lbda))(
+                                    Activation('relu')(BatchNormalization()(
+                                        Conv3D(filters,
+                                               kernel_size,
+                                               strides,
+                                               padding,
+                                               kernel_initializer=initializer,
+                                               kernel_regularizer=regularizers.l2(lbda))(Activation('relu')(BatchNormalization()(x))))))
+
+def MR_global_path(mode, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
+    # a novel idea, to include a global path in the merge and run net implemented with dilated conv
+    return lambda x : DilatedConv(mode, filters, kernel_size, strides, dilation_rate, initializer, lbda, padding)(
+                            Activation('relu')(BatchNormalization()(x)))
+
+
+def MR_block(mode, pos, filters, kernel_size, strides, initializer, lbda, padding='same'):
+    # implementation of the merge-and-run block in https://arxiv.org/pdf/1611.07718.pdf
+    def MR_instance(x,y):
+        mid = add([x,y])
+        x_conv = MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding)(x)
+        y_conv = MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding)(y)
+        if pos == 'end':
+            out = add([add([x_conv,y_conv]),mid])
+            return out
+        else:
+            x_out = add([x_conv,mid])
+            y_out = add([y_conv,mid])
+            return x_out, y_out
+
+    return MR_instance
+
+
+def MR_GE_block(mode, pos, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
+    # GE stands for global enhanced
+    # a novel idea for combining local path with global path
+    def MR_instance(x,y):
+        mid = add([x,y])
+        x_conv = MR_local_path(mode, filters, kernel_size, strides, initializer, lbda, padding)(x)
+        y_conv = MR_global_path(mode, filters, kernel_size, strides, dilation_rate, initializer, lbda, padding)(y)
+        if pos == 'end':
+            out = add([add([x_conv,y_conv]),mid])
+            return out
+        else:
+            x_out = add([x_conv,mid])
+            y_out = add([y_conv,mid])
+            return x_out, y_out
+    return MR_instance
+
+
+

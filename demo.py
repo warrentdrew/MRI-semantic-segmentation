@@ -49,7 +49,7 @@ for i in range(4):
     else:
         last_val_patients = None
 
-    # k=4, 50% out of every 1/4-part, 45 patients discarded (as test-patients)    
+    # k=4, 50% out of every 1/4-part, 45 patients discarded (as test-patients)     #why 50 % out of every 1/4 part, what does sliding window overlap mean???
     patients_test, patients_train, patients_val, patients_val_slices = util.load_correct_patients(path=path, 
                                                                                                   patients_to_take=45, 	# number of test patients
                                                                                                   forget_slices=True, 	# delete not needed loaded data on RAM
@@ -63,7 +63,7 @@ for i in range(4):
     # receptive field: out_res < input_res
     # position: feed_pos = True
     print(' load model')
-    res = 32
+    res = 32            #input resolution
     Model = models.DenseNet3D(in_shape=(res,res,res,2),		# input shape
                               k=16,				            # growth rate
                               ls=[8,8,8,12],			    # layers in dense blocks
@@ -72,7 +72,7 @@ for i in range(4):
                               lbda=0,                       # optional weight-decay
                               out_res=24,                   # receptive field: out_res < in_res
                               feed_pos=True,                # add position at bottleneck
-                              pos_noise_stdv=0)             # optional noice for position
+                              pos_noise_stdv=0)             # optional noise for position
         
     # compile model
     # settings for true-positive-rate (TPR)

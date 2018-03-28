@@ -6,7 +6,7 @@ import util
 import preprocessing
 
 class PatientBuffer():
-    """Loading patients dynamicly in RAM while training."""
+    """Loading patients dynamically in RAM while training."""
     def __init__(self, patients, capacity, batch_size, cropsize_X, cropsize_Y, dim, verbose=False):
         """Constructor."""
         self.patients = patients
@@ -154,7 +154,7 @@ def generator_valid(X_valid, pos_X, Y_valid, batch_size, mult_inputs):
 
 def fit(model,
         patients_train,
-        data_valid,
+        data_valid,         #patient val slices
         epochs,
         batch_size,
         patient_buffer_capacity,

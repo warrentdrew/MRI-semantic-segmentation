@@ -528,8 +528,8 @@ def split(k, i, lst, perc):
     ys = [lst[j] for j in idxs]
     result = []
     for y in ys:
-        result += y[0:int(len(y)*perc)]
-    return (lst[i], result)    
+        result += y[0:int(len(y)*perc)]             #every time add a half of all lst elements, exlucde the current validation fold ?????
+    return (lst[i], result)
            
 def load_correct_patients(path, 
                           patients_to_take, 
@@ -542,7 +542,7 @@ def load_correct_patients(path,
                           verbose=False):
     """Load valid patient-paths from hard disk and generate patient-objects."""
     with open(os.path.join(path,'patients.pkl'), 'rb') as patients:
-        DicomPathsList = pickle.load(patients)
+        DicomPathsList = pickle.load(patients)                      #what is included in the patient.pkl, what is included in the DicomPathList???
     with open(os.path.join(path,'labels.pkl'), 'rb') as labels:
         NiiPathsList = pickle.load(labels)
 
@@ -574,7 +574,7 @@ def load_correct_patients(path,
     if last_val_patients is not None:
         for patient in last_val_patients:
             #print(' drop validation patients')
-            patient.drop()
+            patient.drop()          #what does this means to drop validation patient, drop from buffer?
 
     # generate patient-objects
     patients_test  = []
@@ -594,7 +594,7 @@ def load_correct_patients(path,
     # get slices for validation data
     patients_val_slices = []
     for patient in patients_val:
-        slices = patient.get_slices(verbose=verbose)
+        slices = patient.get_slices(verbose=verbose)                    #what are those slices used for?????
         patients_val_slices.append(slices)
 
     return (patients_test, patients_train, patients_val, patients_val_slices)

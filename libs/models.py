@@ -63,9 +63,9 @@ feed_pos=False, pos_noise_stdv=0):
             pos = GaussianNoise(pos_noise_stdv)(pos)
         pos = BatchNormalization()(pos)
 
-    x = Conv3D(filters=k_0, kernel_size=(7,7,7), strides=(2,2,2), padding='same')(in_)  # k_0 = 32
+    x = Conv3D(filters=k_0, kernel_size=(7,7,7), strides=(2,2,2), padding='same')(in_)
     shortcuts = []
-    for l in ls: # ls = [8,8,8,12]
+    for l in ls:
         x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
         shortcuts.append(x)
         k_0 = int(round((k_0 + k*l) * theta))

@@ -9,8 +9,8 @@ class PatientBuffer():
     """Loading patients dynamically in RAM while training."""
     def __init__(self, patients, capacity, batch_size, cropsize_X, cropsize_Y, dim, verbose=False):
         """Constructor."""
-        self.patients = patients
-        self.batch_size = batch_size
+        self.patients = patients                #patient buffer capacity is 30  patient is a list which represents the buffer
+        self.batch_size = batch_size            #batch_size = 48
         self.cropsize_X = cropsize_X
         self.cropsize_Y = cropsize_Y
         self.dim = dim
@@ -24,7 +24,9 @@ class PatientBuffer():
         self.patient_pointer = capacity
         
         for patient in self.patients[:capacity]:
-            self.sh_register.shift(patient.get_slices(verbose=verbose), verbose=True)
+            self.sh_register.shift(patient.get_slices(verbose=verbose), verbose=True)       #shift means to add a new dicom array(input) and its corresponding label (a set),this jus means onw patient, pointer move to the next item
+                                                                                            #this shift is the shift in the util.py
+            #so the buffer will only contain 30 patients
         
         self.build_batch_buffer()
         
@@ -32,9 +34,9 @@ class PatientBuffer():
         """Fill shift-register of PatientBuffer."""
         capacity = self.sh_register.capacity
 
-        if self.patient_pointer == capacity - 1:
+        if self.patient_pointer == capacity - 1:               #when pointer points to the last elemant in the buffer, drop all the elements in the buffer and reset pointer to the first one
             for i in range(capacity - 1):
-                self.patients[capacity - i - 2].drop()
+                self.patients[capacity - i - 2].drop()          #drop is implemented in Patient class, slice counter-1
             self.patients[len(self.patients) - 1].drop()
             random.shuffle(self.patients)
             for patient in self.patients[:capacity]:
@@ -50,7 +52,7 @@ class PatientBuffer():
             self.patients[i].drop()   
         
     def build_batch_buffer(self):
-        channels, classes = [x.shape[-1] for x in self.sh_register.content[0]]
+        channels, classes = [x.shape[-1] for x in self.sh_register.content[0]]      # here x = (arrayDicom, arraylabels), x.shape[-1] = arrayDicim.shape[-1], arraylabels.shape[-1]
         
         shape_X = (self.batch_size,) + self.dim * (self.cropsize_X,) + (channels,)
         shape_Y = (self.batch_size,) + self.dim * (self.cropsize_Y,) + (classes,)
@@ -64,7 +66,7 @@ class PatientBuffer():
         for patient_train_slices, label_train_slices in self.sh_register.content:
             start = end
             end += self.samples_per_patient
-            self.batch_X[start:end,...], pos, self.batch_Y[start:end,...] = preprocessing.augmentation(self.dim,
+            self.batch_X[start:end,...], pos, self.batch_Y[start:end,...] = preprocessing.augmentation(self.dim,                #sample_per_patient = 1
                                                                                                        patient_train_slices,
                                                                                                        label_train_slices,
                                                                                                        self.samples_per_patient,
@@ -154,7 +156,7 @@ def generator_valid(X_valid, pos_X, Y_valid, batch_size, mult_inputs):
 
 def fit(model,
         patients_train,
-        data_valid,         #patient val slices
+        data_valid,
         epochs,
         batch_size,
         patient_buffer_capacity,
@@ -164,16 +166,17 @@ def fit(model,
         callbacks,
         mult_inputs=False,
         empty_patient_buffer=False):
-    """Perform training on given model and datasets."""
+    """Perform training on given model and datasets."""       #returns a history object
     batches_per_train_epoch = batches_per_shift * len(patients_train)
     
-    if mult_inputs:
-        cropsize_X = model.get_input_shape_at(0)[0][1]
+    if mult_inputs:                                             #multi input stands for adding pos information
+        cropsize_X = model.get_input_shape_at(0)[0][1]          #get_input_shape_at(0)， 0 stands for the 0th node(multi input situation),
+                                                                # model shape [batch_size, w, h, slice, channels] output size cropsize * cropsize
     else:
         cropsize_X = model.get_input_shape_at(0)[1]
     
-    cropsize_Y = model.get_output_shape_at(-1)[1]
-    dim = len(model.get_output_shape_at(-1)) - 2
+    cropsize_Y = model.get_output_shape_at(-1)[1]           #get_output_shape_at(-1) stands for the last output
+    dim = len(model.get_output_shape_at(-1)) - 2                # this means 3D > output 5 dim, 2D > output 4 dim
     mode = str(dim) + 'D'
     
     patients_valid = []

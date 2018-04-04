@@ -1,1 +1,0 @@
-# MRI-semantic-segmentation

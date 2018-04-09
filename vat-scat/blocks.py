@@ -2,9 +2,10 @@ import keras
 import keras.backend as K
 from keras.models import Model
 from keras.layers import *
+from libs.model import denseConv
 
 '''
-idea1: using dilated conv idea and aspp from deeplab paper
+Dilated conv idea and aspp from deeplab paper
 '''
 def DilatedConv(mode, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
     #perform a dilated conv on feature map
@@ -107,8 +108,8 @@ def ASPP(mode, filters, strides, initializer, dilation_rate_list, image_level_po
 
         return ASPP_instance
 '''
-idea2: adopt the dilated conv idea to feature extracting in low level
-one idea is to merge-and-run, create a local path and a global path
+Dilated conv idea to feature extracting in low level
+merge-and-run, create a local path and a global path
 '''
 def MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding='same'):
     # implement a normal residual path in a residual block, which is used as a path in the merge and run net
@@ -181,6 +182,21 @@ def MR_GE_block(mode, pos, filters, kernel_size,  strides, dilation_rate, initia
             y_out = add([y_conv,mid])
             return x_out, y_out
     return MR_instance
+
+
+"""
+Revised blocks for dccn_re
+"""
+
+def transitionLayerTransposeUp(mode, f, lbda):
+    if mode == '2D':
+        return lambda x: Conv2DTranspose(filters=f, kernel_size=(3, 3), strides=(2, 2),
+                                         padding="same", kernel_regularizer = regularizers.l2(lbda))(
+                         denseConv('2D', f, 1, lbda)(x))
+    else:
+        return lambda x: Conv2DTranspose(filters=f, kernel_size=(3, 3, 3), strides=(2, 2, 2),
+                                         padding="same", kernel_regularizer = regularizers.l2(lbda))(
+                         denseConv('3D', f, 1, lbda)(x))
 
 
 

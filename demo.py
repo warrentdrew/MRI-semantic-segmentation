@@ -9,7 +9,7 @@
 import os
 
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 import keras
 import keras.backend as K

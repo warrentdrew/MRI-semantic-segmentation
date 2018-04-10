@@ -31,14 +31,14 @@ def crop(dim, arr, pos, cropsize):
     else: raise 'Unknown mode.'
     return result
 
-def augmentation(dim, patient, label, samples_size, cropsize_X, cropsize_Y, border):
+def augmentation(dim, patient, label, samples_size, cropsize_X, cropsize_Y, border):  #here data augmentation is just crop
     """Data augmentation for training samples."""
-    size_x, size_y, size_z = patient.shape[:3]
-    pos_x_X = np.random.randint(border, size_x-cropsize_X-border, samples_size)
-    pos_y_X = np.random.randint(border, size_y-cropsize_X-border, samples_size)
-    pos_z_X = np.random.randint(border, size_z-cropsize_X-border, samples_size)
-    shape_X1 = (samples_size,) + dim*(cropsize_X,)
-
+    size_x, size_y, size_z = patient.shape[:3]              #sample size: how many augmentations for one patient
+    pos_x_X = np.random.randint(border, size_x-cropsize_X-border, samples_size)         #cropsize_x = 32
+    pos_y_X = np.random.randint(border, size_y-cropsize_X-border, samples_size)         # cropsize_y if not out_res = 32
+    pos_z_X = np.random.randint(border, size_z-cropsize_X-border, samples_size)         # border = 20, distance in pixel between crops
+    shape_X1 = (samples_size,) + dim*(cropsize_X,)          # so its a 32 patch size with a stride of 20
+                                                        #[1,32,32,32]
     dist = (cropsize_X-cropsize_Y) // 2
     pos_x_Y = pos_x_X + dist
     pos_y_Y = pos_y_X + dist

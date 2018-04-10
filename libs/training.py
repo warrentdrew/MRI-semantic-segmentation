@@ -77,7 +77,7 @@ class PatientBuffer():
              
         for i in range(end,self.batch_size):
             rnd = np.random.randint(self.sh_register.capacity)
-            patient_train_slices, label_train_slices = [arr for arr in self.sh_register.content[rnd]]
+            patient_train_slices, label_train_slices = [arr for arr in self.sh_register.content[rnd]]          #change a set arraydicom, niidicom into a list
             self.batch_X[i,...], pos, self.batch_Y[i,...] = preprocessing.augmentation(self.dim,
                                                                              patient_train_slices,
                                                                              label_train_slices,
@@ -175,7 +175,7 @@ def fit(model,
     else:
         cropsize_X = model.get_input_shape_at(0)[1]
     
-    cropsize_Y = model.get_output_shape_at(-1)[1]           #get_output_shape_at(-1) stands for the last output
+    cropsize_Y = model.get_output_shape_at(-1)[1]           #get_output_shape_at(-1) stands for the last output of the network, this means the output layer
     dim = len(model.get_output_shape_at(-1)) - 2                # this means 3D > output 5 dim, 2D > output 4 dim
     mode = str(dim) + 'D'
     

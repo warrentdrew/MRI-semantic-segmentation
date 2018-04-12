@@ -8,7 +8,7 @@ import keras.backend as K
 # ---------------------------------------------------------------------------
 
 # jaccard_dist without background as class
-def jaccard_dist(y_true, y_pred):
+def jaccard_dist(y_true, y_pred):           #might be that bachground is not added into the label
     smooth = 1e-12
     # amount of classes
     cl = K.shape(y_true)[-1]-1

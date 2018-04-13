@@ -11,7 +11,7 @@ import keras.backend as K
 def jaccard_dist(y_true, y_pred):           #might be that bachground is not added into the label
     smooth = 1e-12
     # amount of classes
-    cl = K.shape(y_true)[-1]-1
+    cl = K.shape(y_true)[-1]-1              #cl = 3 since bg is not considered
     # reshape
     y_true = K.reshape(y_true[...,1:], [-1, cl])
     y_pred = K.reshape(y_pred[...,1:], [-1, cl])
@@ -59,9 +59,9 @@ def jaccard_dist_discrete(y_true, y_pred):
 # true-positives, numerator
 def metric_tp_worker(c, y_true, y_pred):
     # only evaluate the argmax, actual result of classification
-    cl = K.shape(y_true)[-1]
-    y_pred = K.one_hot(K.argmax(y_pred, axis=-1), cl)
-    return K.sum((y_true[..., c] * y_pred[..., c]))
+    cl = K.shape(y_true)[-1]            #cl = 4
+    y_pred = K.one_hot(K.argmax(y_pred, axis=-1), cl)               #present the final result using a one-hot
+    return K.sum((y_true[..., c] * y_pred[..., c]))                 #sum up the correctly classified pixels in each class
 
 metric_tp = lambda c: lambda y_true, y_pred: metric_tp_worker(c, y_true, y_pred)
 

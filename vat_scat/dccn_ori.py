@@ -89,7 +89,7 @@ def DenseNet3D(in_shape, k, ls, theta, k_0, lbda=0, out_res=None,
         cut_in = Cropping3D(3 * ((in_shape[1] - out_res) // 2,))(in_)
         x = Concatenate(axis=-1)([cut_in, resize])
 
-    x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
+    x = Conv3D(filters=4, kernel_size=(1, 1, 1))(x)             #here changed to 4 classes
     out = Activation('softmax', name='output_Y')(x)
     if feed_pos:
         model = Model([in_, in_pos], out)

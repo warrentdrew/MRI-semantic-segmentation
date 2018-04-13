@@ -15,7 +15,7 @@ sys.path.insert(0,parentdir)
 #import os
 
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 import keras
 import keras.backend as K

@@ -111,13 +111,13 @@ def merge_labels(path):
     vat = patient_dict['P_VAT']
     scat = patient_dict['P_AT']
     new_shape = bg.shape + (1,)
-    #bg = bg.reshape(new_shape)
+    bg = bg.reshape(new_shape)
     lt = lt.reshape(new_shape)
     vat = vat.reshape(new_shape)
     scat = scat.reshape(new_shape)
-    #label_mat = bg
-    #label_mat = np.concatenate((label_mat, lt), axis = 3)
-    label_mat = lt
+    label_mat = bg
+    label_mat = np.concatenate((label_mat, lt), axis = 3)
+    #label_mat = lt
     label_mat = np.concatenate((label_mat, vat), axis = 3)
     label_mat = np.concatenate((label_mat, scat), axis = 3)
 
@@ -141,7 +141,7 @@ def get_batch_from_buffer(batch_size, patient_buffer, cropsize_X, cropsize_Y, bo
     positions = []
     item_idx = 0
     x_shape = (batch_size,) + 3 * (cropsize_X,) + (1,)
-    y_shape = (batch_size,) + 3 * (cropsize_Y,) + (3,) #4 is num of classes
+    y_shape = (batch_size,) + 3 * (cropsize_Y,) + (4,) #4 is num of classes
     batch_x = np.ndarray(x_shape)
     batch_y = np.ndarray(y_shape)
     crop_per_patient = batch_size // len(patient_buffer)

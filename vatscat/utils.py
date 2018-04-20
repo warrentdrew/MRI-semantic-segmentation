@@ -17,6 +17,8 @@ import os
 import pickle
 import random
 from preprocess import augmentation
+from skimage.morphology import closing
+
 
 '''
 file_path = '/med_data/Segmentation/AT/1_5T/PLIS_3609_GK/rework.mat'
@@ -47,11 +49,102 @@ def check_patient(patient_path_list):
         patient_vat_shape = load_data(patient)['P_VAT'].shape
         patient_scat_shape = load_data(patient)['P_AT'].shape
         if not patient_data_shape[-1] >= 90:
-            print('for patient {} , shape is {},{},{},{},{}'.format(patient, patient_data_shape, patient_bg_shape, patient_lt_shape, patient_vat_shape, patient_scat_shape))
+            print('remove patient {} , shape is {},{},{},{},{}'.format(patient, patient_data_shape, patient_bg_shape, patient_lt_shape, patient_vat_shape, patient_scat_shape))
             patient_path_list.remove(patient)
 
 
     return patient_path_list
+
+
+def retrieve_pixel_classes(cls_vector):
+    #print('cls vector shape:', cls_vector.shape)
+    res = np.where(cls_vector == 1)[0]
+    return res
+
+def val_to_one_hot_array(value, class_num):
+    res = np.zeros([class_num,])
+    res[value] = 1
+    return res
+
+
+def label_remove_2_classes(label_mat):
+    clean_label = label_mat
+    for x , row in enumerate(label_mat):
+        for y, col in enumerate(row):
+            for z, prd in enumerate(col):
+                res = retrieve_pixel_classes(prd)
+                if len(res) is 2:                   #len(res) shows how many classes the pixel belongs to
+                    newres = np.delete(res, np.where(res == 3))
+                    if len(newres) is 1:
+                        clean_label[x, y, z, :] = val_to_one_hot_array(newres[0], 4)
+
+    return clean_label
+
+def check_no_zero_pixel(label_mat):
+    for x, row in enumerate(label_mat):
+        for y, col in enumerate(row):
+            for z, prd in enumerate(col):
+                res = retrieve_pixel_classes(prd)
+                if len(res) is 0:
+                    return False
+
+    return True
+
+def retrieve_zero_pixel_pos(class_map):
+    zero_pixel_pos_list = []
+    for x, row in enumerate(class_map):
+        for y, col in enumerate(row):
+            for z, prd in enumerate(col):
+                if class_map[x, y, z] is 0:
+                    zero_pixel_pos_list.append((x, y, z))
+
+    return zero_pixel_pos_list
+def get_class_map_from_label(label_mat):
+    class_map = np.zeros(label_mat.shape[:3])
+    for x, row in enumerate(label_mat):
+        for y, col in enumerate(row):
+            for z, prd in enumerate(col):
+                res = retrieve_pixel_classes(prd)
+                if len(res) is 0:
+                    class_map[x, y, z] = 0
+                else:
+                    class_map[x, y, z] = res[0] + 1
+
+    return class_map
+
+
+
+
+def class_map_zero_pixel_closing(class_map):                #class map is the added up masks with no class pixels as 0
+    zero_pixel_pos_list = retrieve_zero_pixel_pos(class_map)
+    if len(zero_pixel_pos_list) is 0:
+        return class_map
+    else:
+        clean_map = class_map
+        class_map = closing(class_map)
+        for (x,y,z) in zero_pixel_pos_list:
+            clean_map[x,y,z] = class_map[x,y,z]
+
+        return class_map_zero_pixel_closing(clean_map)
+
+def retrieve_label_from_class_map(class_map):
+    label_map = np.zeros(class_map.shape + (4,))
+    for x, row in enumerate(class_map):
+        for y, col in enumerate(row):
+            for z, prd in enumerate(col):
+                label_map[x,y,z,:] = val_to_one_hot_array((class_map[x,y,z]-1), 4)
+
+    return label_map
+
+def process_label(label_mat):
+    double_class_removed = label_remove_2_classes(label_mat)
+    class_map = get_class_map_from_label(double_class_removed)
+    class_map = class_map_zero_pixel_closing(class_map)
+    clean_label = retrieve_label_from_class_map(class_map)
+    return clean_label
+
+
+
 
 def store_patients(data_path, save_path = '../patient-paths/patients_1_5T.pkl'):
     #load patient paths from dataset
@@ -141,6 +234,8 @@ def merge_labels(path):
     #label_mat = lt
     label_mat = np.concatenate((label_mat, vat), axis = 3)
     label_mat = np.concatenate((label_mat, scat), axis = 3)
+
+    #label_mat = process_labels(label_mat)
 
 
 

@@ -16,6 +16,11 @@ sys.path.insert(0,parentdir)
 
 # choose GPU
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.7
+set_session(tf.Session(config=config))
 
 import keras
 import keras.backend as K
@@ -101,7 +106,7 @@ for i in range(4):
     hist_object = fit(model=Model,
                       patients_train=patients_train,
                       data_valid=patients_val_slices,
-                      epochs=50,
+                      epochs=30,
                       batch_size=48,
                       patient_buffer_capacity=30,  # amount of patients on RAM
                       batches_per_shift=5,  # batches_per_train_epoch = batches_per_shift * len(patients_train),

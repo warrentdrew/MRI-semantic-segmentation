@@ -148,7 +148,7 @@ def plot_loss_curve(lhist, ep):
     val_discr_loss_mean = np.mean(val_discr_loss, axis=0)
     val_discr_loss_std = np.std(val_discr_loss, axis=0)
     
-    plt.ylim(*(0,0.7))
+    plt.ylim(*(0,0.07))
     plt.yticks(np.linspace(0, 0.7, 11))
     plt.grid()
     
@@ -161,5 +161,6 @@ def plot_loss_curve(lhist, ep):
     plt.plot(epochs, val_discr_loss_mean, '-', color="b", label="discrete validation loss")
     
     plt.legend(loc="upper right")
+
     
     return plt

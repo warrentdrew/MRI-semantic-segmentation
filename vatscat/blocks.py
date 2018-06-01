@@ -2,12 +2,13 @@ import keras
 import keras.backend as K
 from keras.models import Model
 from keras.layers import *
-from libs.model import denseConv
+from math import log2
+
 
 '''
 Dilated conv idea and aspp from deeplab paper
 '''
-def DilatedConv(mode, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
+def DilatedConv(mode, filters,  dilation_rate, initializer, lbda, padding='same'):
     #perform a dilated conv on feature map
     #Args:
     #   mode: 2D or 3D
@@ -17,8 +18,8 @@ def DilatedConv(mode, filters, kernel_size,  strides, dilation_rate, initializer
     #   lbda: param for weigth decay
     if mode == '2D':
         return lambda x : Conv2D(filters,
-                                 kernel_size,
-                                 strides = strides,
+                                 kernel_size = (3, 3),
+                                 strides = (1, 1),
                                  padding = padding,
                                  dilation_rate = dilation_rate,
                                  kernel_initializer = initializer,
@@ -27,8 +28,8 @@ def DilatedConv(mode, filters, kernel_size,  strides, dilation_rate, initializer
                           BatchNormalization()(x))) #remove bias regularizer, usually only weights needs to be regularized
     else:
         return lambda x : Conv3D(filters,
-                                 kernel_size,
-                                 strides=strides,
+                                 kernel_size = (3, 3, 3),
+                                 strides= (1, 1, 1),
                                  padding=padding,
                                  dilation_rate=dilation_rate,
                                  kernel_initializer = initializer,
@@ -108,85 +109,163 @@ def ASPP(mode, filters, strides, initializer, dilation_rate_list, image_level_po
 
         return ASPP_instance
 '''
-Dilated conv idea to feature extracting in low level
-merge-and-run, create a local path and a global path
+blocks for Merge and Run (MR) series: MRGE_net
 '''
-def MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding='same'):
+def MR_local_path(mode, filters, initializer, lbda, padding='same'):
     # implement a normal residual path in a residual block, which is used as a path in the merge and run net
     # the path is an improved scheme proposed in http://arxiv.org/pdf/1603.05027v2.pdf
     # bn -> relu -> conv
     if mode == '2D':
         return lambda x : Conv2D(filters,
-                                 kernel_size= kernel_size,
-                                 strides= strides,
+                                 kernel_size= (3,3),
+                                 strides= (1,1),
                                  padding= padding,
                                  kernel_initializer= initializer,
                                  kernel_regularizer = regularizers.l2(lbda))(
                                     Activation('relu')(BatchNormalization()(
                                     Conv2D(filters,
-                                           kernel_size,
-                                           strides,
-                                           padding,
+                                           kernel_size = (3,3),
+                                           strides = (1,1),
+                                           padding = padding,
                                            kernel_initializer= initializer,
                                            kernel_regularizer= regularizers.l2(lbda))(Activation('relu')(BatchNormalization()(x))))))
     else:
         return lambda x: Conv3D(filters,
-                                kernel_size=kernel_size,
-                                strides=strides,
+                                kernel_size= (3,3,3),
+                                strides=(1,1,1),
                                 padding=padding,
                                 kernel_initializer=initializer,
                                 kernel_regularizer=regularizers.l2(lbda))(
                                     Activation('relu')(BatchNormalization()(
                                         Conv3D(filters,
-                                               kernel_size,
-                                               strides,
-                                               padding,
+                                               kernel_size=(3, 3, 3),
+                                               strides=(1, 1, 1),
+                                               padding=padding,
                                                kernel_initializer=initializer,
                                                kernel_regularizer=regularizers.l2(lbda))(Activation('relu')(BatchNormalization()(x))))))
 
-def MR_global_path(mode, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
+def MR_global_path(mode, filters, dilation_rate, initializer, lbda, padding='same'):
     # a novel idea, to include a global path in the merge and run net implemented with dilated conv
-    return lambda x : DilatedConv(mode, filters, kernel_size, strides, dilation_rate, initializer, lbda, padding)(
-                            Activation('relu')(BatchNormalization()(x)))
+    return lambda x : DilatedConv(mode, filters, dilation_rate, initializer, lbda, padding)(x)
 
 
-def MR_block(mode, pos, filters, kernel_size, strides, initializer, lbda, padding='same'):
+def MR_block(mode, filters, kernel_size, strides, initializer, lbda, padding='same'):
     # implementation of the merge-and-run block in https://arxiv.org/pdf/1611.07718.pdf
     def MR_instance(x,y):
-        mid = add([x,y])
+        mid = Add()([x,y])
         x_conv = MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding)(x)
         y_conv = MR_local_path(mode, filters, kernel_size,  strides, initializer, lbda, padding)(y)
-        if pos == 'end':
-            out = add([add([x_conv,y_conv]),mid])
-            return out
-        else:
-            x_out = add([x_conv,mid])
-            y_out = add([y_conv,mid])
-            return x_out, y_out
+        x_out = Add()([x_conv,mid])
+        y_out = Add()([y_conv,mid])
+        return x_out, y_out
 
     return MR_instance
 
 
-def MR_GE_block(mode, pos, filters, kernel_size,  strides, dilation_rate, initializer, lbda, padding='same'):
+def MR_GE_block(mode, filters, dilation_rate, lbda, kernel_initializer = 'he_normal',  padding='same'):
     # GE stands for global enhanced
     # a novel idea for combining local path with global path
     def MR_instance(x,y):
-        mid = add([x,y])
-        x_conv = MR_local_path(mode, filters, kernel_size, strides, initializer, lbda, padding)(x)
-        y_conv = MR_global_path(mode, filters, kernel_size, strides, dilation_rate, initializer, lbda, padding)(y)
-        if pos == 'end':
-            out = add([add([x_conv,y_conv]),mid])
-            return out
-        else:
-            x_out = add([x_conv,mid])
-            y_out = add([y_conv,mid])
-            return x_out, y_out
+        mid = Add()([x,y])
+        x_conv = MR_local_path(mode, filters, kernel_initializer, lbda, padding)(x)
+        y_conv = MR_global_path(mode, filters, dilation_rate, kernel_initializer, lbda, padding)(y)
+        x_out = Add()([x_conv,mid])
+        y_out = Add()([y_conv,mid])
+        return x_out, y_out
+
     return MR_instance
 
+def MR_block_split(filters, lbda, initializer = 'he_normal', padding = 'same'):
+    def MR_split_instance(x):
+        x = Conv3D(filters= filters,
+                   kernel_size=(1,1,1),
+                   strides=(1, 1, 1),
+                   padding=padding,
+                   kernel_initializer= initializer,
+                   kernel_regularizer=regularizers.l2(lbda))(
+                         Activation('relu')(
+                         BatchNormalization()(x)))
+        x_out = y_out = x
+        return x_out, y_out
+    return MR_split_instance
+
+def MR_GE_block_merge(mode, filters, dilation_rate, lbda, kernel_initializer = 'he_normal', padding='same'):
+    def MR_merge_instance(x,y):
+        mid = Add()([x,y])
+        x_conv = MR_local_path(mode, filters, kernel_initializer, lbda, padding)(x)
+        y_conv = MR_global_path(mode, filters, dilation_rate, kernel_initializer, lbda, padding)(y)
+        out = Add()([Add()([x_conv, y_conv]), mid])
+        return out
+    return MR_merge_instance
+
+def MRGE_exp_block(mode, filters, dilation_max, lbda):
+    def MRGE_exp_instance(x):
+        x, y = MR_block_split(filters, lbda)(x)
+        block_num = int(log2(dilation_max) + 1)
+        rate_list = [2 ** i for i in range(block_num)]
+        for rate in rate_list[:-1]:
+            x, y = MR_GE_block(mode, filters=filters, dilation_rate=rate, lbda=lbda)(x, y)
+        x = MR_GE_block_merge(mode, filters=filters, dilation_rate=rate_list[-1], lbda=lbda)(x, y)
+        return x
+    return MRGE_exp_instance
+
+
+
+
+
 
 """
-Revised blocks for dccn_re
+blocks for DCCN series: DCCN_ORI, DCCN_SYMM
 """
+
+def denseBlock(mode, l, k, lbda):
+    if mode == '2D':
+        def dense_block_instance(x):
+            ins = [x, denseConv('2D',k,3,lbda)(
+                      denseConv('2D',k,1, lbda)(x))]
+            for i in range(l-1):
+                ins.append(denseConv('2D',k,3, lbda)(
+                           denseConv('2D',k,1, lbda)(Concatenate(axis=-1)(ins))))
+            y = Concatenate(axis=-1)(ins)
+            return y
+        return dense_block_instance
+    else:
+        def dense_block_instance(x):
+            ins = [x, denseConv('3D',k,3, lbda)(
+                      denseConv('3D',k,1, lbda)(x))]
+            for i in range(l-1):
+                ins.append(denseConv('3D',k,3, lbda)(
+                           denseConv('3D',k,1, lbda)(Concatenate(axis=-1)(ins))))
+            y = Concatenate(axis=-1)(ins)
+            return y
+        return dense_block_instance
+
+def denseConv(mode, k, kernel_size, lbda):
+    if mode == '2D':
+        return lambda x: Conv2D(filters=k,
+                                kernel_size=2*(kernel_size,),
+                                padding='same',
+                                kernel_regularizer=regularizers.l2(lbda),
+                                bias_regularizer=regularizers.l2(lbda))(
+                         Activation('relu')(
+                         BatchNormalization()(x)))
+    else:
+        return lambda x: Conv3D(filters=k,
+                                kernel_size=3*(kernel_size,),
+                                padding='same',
+                                kernel_regularizer=regularizers.l2(lbda),
+                                bias_regularizer=regularizers.l2(lbda))(
+                         Activation('relu')(
+                         BatchNormalization()(x)))
+
+# Transition Layers
+def transitionLayerPool(mode, f, lbda):
+    if mode == '2D':
+        return lambda x: AveragePooling2D(pool_size=2*(2,))(
+                         denseConv('2D', f, 1, lbda)(x))
+    else:
+        return lambda x: AveragePooling3D(pool_size=3*(2,))(
+                         denseConv('3D', f, 1, lbda)(x))
 
 def transitionLayerTransposeUp(mode, f, lbda):
     if mode == '2D':
@@ -194,9 +273,75 @@ def transitionLayerTransposeUp(mode, f, lbda):
                                          padding="same", kernel_regularizer = regularizers.l2(lbda))(
                          denseConv('2D', f, 1, lbda)(x))
     else:
-        return lambda x: Conv2DTranspose(filters=f, kernel_size=(3, 3, 3), strides=(2, 2, 2),
+        return lambda x: Conv3DTranspose(filters=f, kernel_size=(3, 3, 3), strides=(2, 2, 2),
                                          padding="same", kernel_regularizer = regularizers.l2(lbda))(
                          denseConv('3D', f, 1, lbda)(x))
 
+class resize_2D(Layer):
 
+    def __init__(self, out_res=24, **kwargs):
+        self.input_dim = None
+        self.out_res = out_res
+        super(resize_2D, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.input_dim = input_shape[1:]
+        super(resize_2D, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        size=(K.constant(np.array(2*(self.out_res,), dtype=np.int32), dtype=K.tf.int32))
+        y = K.tf.image.resize_bilinear(images=x, size=size)
+        return y
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0],) + 2 * (self.out_res,) + (input_shape[-1],)
+
+class resize_3D(Layer):
+
+    def __init__(self, out_res=24, **kwargs):
+        self.input_dim = None
+        self.out_res = out_res
+        super(resize_3D, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.input_dim = input_shape[1:]
+        super(resize_3D, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        y = K.reshape(x=x,
+                      shape=(-1,
+                             self.input_dim[0],
+                             self.input_dim[1],
+                             self.input_dim[2] * self.input_dim[3]))
+        y = K.tf.image.resize_bilinear(images=y,
+                                       size=(K.constant(np.array(2*(self.out_res,),
+                                                                 dtype=np.int32),
+                                                        dtype=K.tf.int32)))
+        y = K.reshape(x=y,
+                      shape=(-1,
+                             self.out_res,
+                             self.out_res,
+                             self.input_dim[2],
+                             self.input_dim[3]))
+        y = K.permute_dimensions(x=y, pattern=(0,1,3,2,4))
+        y = K.reshape(x=y,
+                      shape=(-1,
+                             self.out_res,
+                             self.input_dim[2],
+                             self.out_res * self.input_dim[3]))
+        y = K.tf.image.resize_bilinear(images=y,
+                                       size=(K.constant(np.array(2*(self.out_res,),
+                                                                 dtype=np.int32),
+                                                       dtype=K.tf.int32)))
+        y = K.reshape(x=y,
+                      shape=(-1,
+                             self.out_res,
+                             self.out_res,
+                             self.out_res,
+                             self.input_dim[3]))
+        y = K.permute_dimensions(x=y, pattern=(0,1,3,2,4))
+        return y
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0],) + 3 * (self.out_res,) + (input_shape[-1],)
 

@@ -1,11 +1,19 @@
+import os,sys,inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir)
+
 import keras
 import keras.backend as K
 from keras.models import Model
 from keras.layers import *
-from libs.models import denseBlock, transitionLayerPool, resize_3D
+from keras.models import load_model
+from blocks import denseBlock, transitionLayerPool, resize_3D
 from blocks import transitionLayerTransposeUp
-import libs.custom_metrics
+from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge
+import libs.custom_metrics as custom_metrics
 from libs.training import fit
+from math import log2
 
 """
 This class implements a revised version of the original work DCCN
@@ -13,15 +21,13 @@ Revision:
 1. removing of params at high level features
 2. change upsample into transpose conv
 """
-class DCCN_RE():
+class MRGE():
     '''
     __init__ function will build up the model with given hyperparams
     '''
-    def __init__(self, in_shape, k, ls, theta, k_0, lbda=0, out_res=None, feed_pos=False, pos_noise_stdv=0):
+    def __init__(self, in_shape, rls, k_0, lbda=0, out_res=None, feed_pos=False, pos_noise_stdv=0):
         self.in_shape = in_shape
-        self.k = k
-        self.ls = ls
-        self.theta = theta
+        self.rls = rls
         self.k_0 = k_0
         #self.out_res = out_res
         #self.feed_pos = feed_pos
@@ -37,48 +43,76 @@ class DCCN_RE():
                 pos = GaussianNoise(pos_noise_stdv)(pos)
             pos = BatchNormalization()(pos)
 
-        x = Conv3D(filters=k_0, kernel_size=(7, 7, 7), strides=(2, 2, 2), padding='same')(in_)
         shortcuts = []
-        for l in ls:            #ls for dccn_re is [8,8,4,2]
-            x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
-            shortcuts.append(x)
-            k_0 = int(round((k_0 + k * l) * theta))
-            x = transitionLayerPool(mode='3D', f=k_0, lbda=lbda)(x)
+        x = in_
 
+        for l in rls:            #rls for mege_net is [8,4,2,1,1]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
+            x, y = MR_block_split(k_0, lbda)(x)
+            block_num = int(log2(l) + 1)
+            rate_list = [2 ** i for i in range(block_num)]
+            for rate in rate_list[:-1]:
+                x, y = MR_GE_block('3D', filters= k_0, dilation_rate = rate, lbda = lbda)(x,y)
+            x = MR_GE_block_merge('3D', filters = k_0, dilation_rate = rate_list[-1], lbda=lbda)(x,y)
+            shortcuts.append(x)
+            x = MaxPool3D()(x)
+            k_0 = int(2 * k_0)
+
+        k_0 = int(x.shape[-1])
         #add one dense conv at the bottleneck, shift the dense block for the decoder to make it symmetric
-        x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
-        x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2), padding='same')(x)
+        x = Conv3D(filters= k_0,
+                   kernel_size=(1,1,1),
+                   strides=(1, 1, 1),
+                   padding= 'same',
+                   kernel_initializer= 'he_normal',
+                   kernel_regularizer=regularizers.l2(lbda))(
+                         Activation('relu')(
+                         BatchNormalization()(x)))
 
         if feed_pos:
             shape = x._keras_shape[1:4]
             pos = UpSampling3D(size=shape)(pos)
             x = Concatenate(axis=-1)([x, pos])
 
-        for l, shortcut in reversed(list(zip(ls, shortcuts))):
-            x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
-            k_0 = int(round((k_0 + k * l) * theta / 2))
-            x = transitionLayerTransposeUp(mode='3D', f=k_0, lbda=lbda)(x)
-            x = Concatenate(axis=-1)([shortcut, x])
-        #x = UpSampling3D()(x)
+        for l, shortcut in reversed(list(zip(self.rls, shortcuts))):  #start from transpose conv then mrge
+            x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),
+                            padding="same", kernel_initializer = 'he_normal', kernel_regularizer=regularizers.l2(lbda))(x)
+            x = Add()([shortcut, x])
+            k_0 = int(k_0 // 2)
+            x, y = MR_block_split(k_0, lbda)(x)
+            block_num = int(log2(l) + 1)
+            rate_list = [2 ** i for i in range(block_num)]
+            for rate in rate_list[:-1]:
+                x, y = MR_GE_block('3D', filters=k_0, dilation_rate=rate, lbda=lbda)(x, y)
+            x = MR_GE_block_merge('3D', filters=k_0, dilation_rate=rate_list[-1], lbda=lbda)(x, y)
+
+        x = Conv3D(filters=4,
+                   kernel_size=(1, 1, 1),
+                   strides=(1, 1, 1),
+                   padding='same',
+                   kernel_initializer='he_normal',
+                   kernel_regularizer=regularizers.l2(lbda))(
+                Activation('relu')(
+                BatchNormalization()(x)))
 
         if out_res is not None:
             resize = resize_3D(out_res=out_res)(x)
             cut_in = Cropping3D(3 * ((in_shape[1] - out_res) // 2,))(in_)
             x = Concatenate(axis=-1)([cut_in, resize])
 
-        x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
+        #x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
         out = Activation('softmax', name='output_Y')(x)
         if feed_pos:
             self.model = Model([in_, in_pos], out)
         else:
             self.model = Model(in_, out)
 
+
     '''
     compile model
     settings for true-positive-rate (TPR)
     '''
     def compile(self):
-        cls = 3
+        cls = 4
 
         m1 = [custom_metrics.metric_tp(c) for c in range(cls)]
         for j, f in enumerate(m1):
@@ -110,6 +144,7 @@ class DCCN_RE():
                           empty_patient_buffer=config.empty)  # empty whole buffer, after training of one model (provide RAM for next model)
 
         return hist_object
+
 
 
 

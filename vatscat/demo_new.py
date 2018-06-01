@@ -19,7 +19,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
 config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.7
+config.gpu_options.per_process_gpu_memory_fraction = 0.95
 set_session(tf.Session(config=config))
 
 import keras
@@ -46,8 +46,8 @@ from libs.training import fit
 path = "../patient-paths/patients_1_5T.pkl"
 
 # path were to save the model and history
-path_m = "../models/"
-path_h = "../histories/"
+path_m = "/home/d1251/no_backup/d1251/models/"
+path_h = "/home/d1251/no_backup/d1251/histories/"
 
 # list for history-objects
 lhist = []
@@ -60,7 +60,7 @@ for i in range(4):
     print(' load patients and drop last validation patients')
 
     #do the data loading and preprocessing
-    train_path, validation_path, test_path = dataset_split(path, test_rate = 0.2, valid_train_rate = 0.1, shuffle = True, seed = 100)
+    train_path, validation_path, test_path = dataset_split(path, test_rate = 0.2, valid_train_rate = 0.05, shuffle = True, seed= 100)
     patients_test, patients_train, patients_val, patients_val_slices = load_correct_patient(train_path, validation_path, test_path, forget_slices = True)
 
 
@@ -96,8 +96,10 @@ for i in range(4):
                   metrics=m1 + m2 + ['categorical_accuracy'] + [custom_metrics.jaccard_dist_discrete])
     print(' model compiled.')
 
+    Model.summary()
+
     # saves the model weights after each epoch if the validation loss decreased
-    path_w = path_m + "k-fold-50" + str(i) + ".hdf5"
+    path_w = path_m + "k-fold-50-" + str(i) + ".hdf5"
     checkpointer = cb.ModelCheckpoint(filepath=path_w, verbose=0, monitor='val_loss', save_best_only=True)
 
     # train
@@ -108,7 +110,7 @@ for i in range(4):
                       data_valid=patients_val_slices,
                       epochs=30,
                       batch_size=48,
-                      patient_buffer_capacity=30,  # amount of patients on RAM
+                      patient_buffer_capacity=10,  # amount of patients on RAM
                       batches_per_shift=5,  # batches_per_train_epoch = batches_per_shift * len(patients_train),
                                              # batches out of buffer before one shift-operation, see every patient in one epoch!
                       density=5,  # density for meshgrid of positions for validation data
@@ -117,7 +119,7 @@ for i in range(4):
                       mult_inputs=False,  # if additional position at bottleneck, mult_inputs = True
                       empty_patient_buffer=True)  # empty whole buffer, after training of one model (provide RAM for next model)
 
-    print(' save histories')
+    print('save histories')
     # list of histories
     lhist.append(hist_object.history)
 

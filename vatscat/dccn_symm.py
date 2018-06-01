@@ -1,10 +1,15 @@
+import os,sys,inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir)
+
 import keras
 import keras.backend as K
 from keras.models import Model
 from keras.layers import *
-from libs.models import denseBlock, transitionLayerPool, resize_3D
+from blocks import denseBlock, transitionLayerPool, resize_3D
 from blocks import transitionLayerTransposeUp
-import libs.custom_metrics
+import libs.custom_metrics as custom_metrics
 from libs.training import fit
 
 """
@@ -13,13 +18,13 @@ Revision:
 1. removing of params at high level features
 2. change upsample into transpose conv
 """
-class DCCN_RE():
+class DCCN_SYMM():
     '''
     __init__ function will build up the model with given hyperparams
     '''
-    def __init__(self, in_shape, k, ls, theta, k_0, lbda=0, out_res=None, feed_pos=False, pos_noise_stdv=0):
+    def __init__(self, in_shape, kls, ls, theta, k_0, lbda=0, out_res=None, feed_pos=False, pos_noise_stdv=0):
         self.in_shape = in_shape
-        self.k = k
+        self.kls = kls
         self.ls = ls
         self.theta = theta
         self.k_0 = k_0
@@ -37,36 +42,42 @@ class DCCN_RE():
                 pos = GaussianNoise(pos_noise_stdv)(pos)
             pos = BatchNormalization()(pos)
 
-        x = Conv3D(filters=k_0, kernel_size=(7, 7, 7), strides=(2, 2, 2), padding='same')(in_)
+        x = Conv3D(filters=k_0, kernel_size=(7, 7, 7), strides=(2, 2, 2), padding='same')(in_)  #k_0 = 32
         shortcuts = []
-        for l in ls:            #ls for dccn_re is [8,8,4,2]
+
+        kls_ls_list = list(zip(self.kls, self.ls))
+
+
+        for k, l in kls_ls_list:            #ls for dccn_symm is [8,8,4,2], k is [16,16,32,64]
             x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
             shortcuts.append(x)
             k_0 = int(round((k_0 + k * l) * theta))
             x = transitionLayerPool(mode='3D', f=k_0, lbda=lbda)(x)
 
         #add one dense conv at the bottleneck, shift the dense block for the decoder to make it symmetric
-        x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
-        x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2), padding='same')(x)
+        x = denseBlock(mode='3D', l=1, k=128, lbda=lbda)(x)
 
         if feed_pos:
             shape = x._keras_shape[1:4]
             pos = UpSampling3D(size=shape)(pos)
             x = Concatenate(axis=-1)([x, pos])
 
-        for l, shortcut in reversed(list(zip(ls, shortcuts))):
-            x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
-            k_0 = int(round((k_0 + k * l) * theta / 2))
+        for k, l, shortcut in reversed(list(zip(self.kls, self.ls, shortcuts))):  #start from TLU then DB
+            k_0 = int(shortcut.shape[-1])                #get the number of channels for the low level feature map
+            #print('k_0:', k_0)
             x = transitionLayerTransposeUp(mode='3D', f=k_0, lbda=lbda)(x)
-            x = Concatenate(axis=-1)([shortcut, x])
-        #x = UpSampling3D()(x)
+            x = Add()([shortcut, x])
+            x = denseBlock(mode='3D', l=l, k=k, lbda=lbda)(x)
+
+
+        x = Conv3DTranspose(filters=4, kernel_size=(3, 3, 3), strides=(2, 2, 2), padding="same", kernel_regularizer = regularizers.l2(lbda))(x)
 
         if out_res is not None:
             resize = resize_3D(out_res=out_res)(x)
             cut_in = Cropping3D(3 * ((in_shape[1] - out_res) // 2,))(in_)
             x = Concatenate(axis=-1)([cut_in, resize])
 
-        x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
+        #x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
         out = Activation('softmax', name='output_Y')(x)
         if feed_pos:
             self.model = Model([in_, in_pos], out)
@@ -78,7 +89,7 @@ class DCCN_RE():
     settings for true-positive-rate (TPR)
     '''
     def compile(self):
-        cls = 3
+        cls = 4
 
         m1 = [custom_metrics.metric_tp(c) for c in range(cls)]
         for j, f in enumerate(m1):

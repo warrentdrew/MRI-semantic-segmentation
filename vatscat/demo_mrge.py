@@ -6,7 +6,7 @@ sys.path.insert(0,parentdir)
 import argparse
 import os
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 import keras
 import keras.backend as K
@@ -16,15 +16,17 @@ from keras.layers import *
 K.set_image_data_format = 'channels_last'
 
 import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
-config = tf.ConfigProto()
+#from keras.backend.tensorflow_backend import set_session
+config = K.tf.ConfigProto(intra_op_parallelism_threads = 1, inter_op_parallelism_threads = 1, allow_soft_placement = True, device_count = {'CPU': 1})
 config.gpu_options.per_process_gpu_memory_fraction = 0.95
-set_session(tf.Session(config=config))
+#config.intra_op_parallelism_threads=1
+#config.inter_op_parallelism_threads=1
+K.set_session(tf.Session(config=config))
 
 # import own scripts
 
 import libs.history as history
-from dccn_symm import DCCN_SYMM
+from mrge_net import MRGE
 from utils import dataset_split
 from patient import load_correct_patient
 
@@ -34,12 +36,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_path', default= '../patient-paths/patients_1_5T.pkl', type = str)
 parser.add_argument('--model_path', default= '/home/d1251/no_backup/d1251/models/', type = str)
 parser.add_argument('--history_path', default= '/home/d1251/no_backup/d1251/histories/', type = str)
-
 parser.add_argument('--in_size', default = 32, type = int)
-parser.add_argument('--k', default = [16, 16, 32, 64], type = int, help= 'growth rate of dense block')
-parser.add_argument('--ls', default = [8,8,4,2], type = list, help = 'layers in dense blocks')
-parser.add_argument('--theta', default = 0.5, type = float, help = 'compression factor for dense net')
-parser.add_argument('--k_0', default = 32, type = int, help = 'num of channel in input layer')
+parser.add_argument('--rls', default = [8,4,2,1,1], type = list, help = 'layers in dense blocks')
+parser.add_argument('--k_0', default = 16, type = int, help = 'num of channel in input layer')
 parser.add_argument('--lbda', default = 0, type = float, help = 'lambda for l2 reg')
 parser.add_argument('--out_res', default=None, type = int, help = 'output resolution')
 parser.add_argument('--with_pos', dest='pos', help = 'add position information in model', action = 'store_true')    #This is the same as mult_inputs
@@ -84,10 +83,8 @@ for i in range(4):
 
 
 
-    network = DCCN_SYMM(in_shape=(args.in_size, args.in_size, args.in_size, 1),
-                      kls = args.k,
-                      ls = args.ls,
-                      theta = args.theta,
+    network = MRGE(in_shape=(args.in_size, args.in_size, args.in_size, 1),
+                      rls = args.rls,
                       k_0 = args.k_0,
                       lbda = args.lbda,
                       out_res= args.out_res,
@@ -100,8 +97,8 @@ for i in range(4):
     network.model.summary()
 
     # saves the model weights after each epoch if the validation loss decreased
-    path_w = args.model_path + "k-fold-symm-weights-" + str(i) + ".hdf5"
-    checkpointer = cb.ModelCheckpoint(filepath=path_w, verbose=0, monitor='val_loss', save_best_only=True, save_weights_only= True)
+    path_w = args.model_path + "k-fold-mrge-weights-" + str(i) + ".hdf5"
+    checkpointer = cb.ModelCheckpoint(filepath=path_w, verbose=0, monitor='val_loss', save_best_only=True, save_weights_only=True)
 
     # train
     # postion: mult_inputs = True
@@ -112,5 +109,5 @@ for i in range(4):
     lhist.append(hist_object.history)
 
     # save history
-    path_hist = args.history_path + "k-fold-symm"
+    path_hist = args.history_path + "k-fold-mrge"
     history.save_histories(lhist=lhist, path=path_hist)

@@ -7,8 +7,8 @@ import pickle
 
 import dicom
 import nibabel as nib
-import matplotlib
-matplotlib.use('Agg') # Must be before importing matplotlib.pyplot or pylab!
+#import matplotlib
+#matplotlib.use('agg') # Must be before importing matplotlib.pyplot or pylab!
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 
@@ -201,7 +201,7 @@ def colorize(prediction, colors={0 : np.array([0,0,0]),
             for z, prd in enumerate(col):
                 pred_picture[x,y,z,:] = colors[prd]
     return pred_picture
-        
+
 
 class Patient():
     """Creates patient."""
@@ -380,7 +380,9 @@ class Patient():
         """Function for plotting patient with label."""
         # get patient data
         dicoms, niis = self.get_slices(count=False)
-        niis = np.argmax(niis, axis=-1)
+        niis = np.argmax(niis, axis=-1)         #originally the label was a probability in each mask for every position
+                                                # returns the index for the max value in the last axis for the niis, which is
+                                                # the class each pixel belongs to can be [0, 1, 2]
         x, y, z = dicoms.shape[:3]
         # arrays for plotting
         dicoms = (dicoms).astype('float32')
@@ -422,18 +424,24 @@ class Patient():
         dicoms, _ = self.get_slices(count=False)
         dishape = dicoms.shape
         outshape = model.get_output_shape_at(-1)[1:]
-        inshape = model.internal_input_shapes
+        #inshape = model.internal_input_shapes
+        inshape = model.get_input_shape_at(0)
         if len(inshape)==1:
             feedpos = False
         elif len(inshape)>1:
             feedpos = True
         else:
             raise 'no input'
-        inshape = inshape[0][1:]
+
+
+
+        #inshape = inshape[0][1:]
+        inshape = inshape[1:]           #input shape (32,32,32,1) output shape(32,32,32,4) dishape(256,192,105,1)
+        print('inshape:', inshape)
         prediction_shape = dicoms.shape[:3] + (outshape[-1],)
         prediction = np.zeros(prediction_shape)
-        prediction[:,:,:,0] = np.ones(dicoms.shape[:3])
-        deltas = tuple((np.array(inshape[:3]) - np.array(outshape[:3])) // 2)
+        prediction[:,:,:,0] = np.ones(dicoms.shape[:3])     #the default is that all the pixels are predicted as background, so the remainer during the cropping are classified as bg
+        deltas = tuple((np.array(inshape[:3]) - np.array(outshape[:3])) // 2) #this is like the padding added outside the output of the input, to make it have the same shape as the input
         input_dict = {}
         for x in range(0,dishape[0] - inshape[0], outshape[0]):
             for y in range(0,dishape[1] - inshape[1], outshape[1]):
@@ -454,7 +462,7 @@ class Patient():
                         
                     prediction[x + deltas[0] : x + deltas[0] + outshape[0],
                                y + deltas[1] : y + deltas[1] + outshape[1],
-                               z + deltas[2] : z + deltas[2] + outshape[2],:] = model.predict(input_dict)
+                               z + deltas[2] : z + deltas[2] + outshape[2],:] = model.predict(input_dict) #this ensures that only the most outside part the for whole image is predicted as bg
         return prediction
 
     def heatmap(self, model, depth, cls=0):
@@ -523,7 +531,7 @@ class Patient():
         #plt.ylabel('z-axis')
         ax3.imshow(np.fliplr(np.rot90(dicoms[:,dim[1],:,chNr], axes=(1,0))), interpolation='none', cmap='gray')
         ax3.imshow(np.fliplr(np.rot90(colorize(prediction)[:,dim[1],:,:], axes=(1,0))), interpolation='none', alpha=alpha)
-        return fig
+        return plt
 
 def split(k, i, lst, perc):
     idxs = set(range(k)) - {i}

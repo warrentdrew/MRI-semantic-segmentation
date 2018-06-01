@@ -97,32 +97,32 @@ def check_slices_and_labels(path, pos, alpha):  # this dim is more like a positi
     ax1 = plt.subplot(231)
     plt.axis('off')
     #ax1.imshow(img[:, :, pos[2]], interpolation='none', cmap='gray')
-    ax1.imshow(colorize_for_label_check(label)[:, :, pos[2], :], interpolation='none', alpha = alpha)
+    ax1.imshow(colorize_for_label_check(img)[:, :, pos[2], :], interpolation='none', alpha = alpha)
 
     ax2 = plt.subplot(232)
     plt.axis('off')
     #ax2.imshow(np.rot90(img[pos[0], :, :]), interpolation='none', cmap='gray')
-    ax2.imshow(np.rot90(colorize_for_label_check(label)[pos[0], :, :, :]), interpolation='none', alpha = alpha)
+    ax2.imshow(np.rot90(colorize_for_label_check(img)[pos[0], :, :, :]), interpolation='none', alpha = alpha)
 
     ax3 = plt.subplot(233)
     plt.axis('off')
     #ax3.imshow(np.rot90(img[:, pos[1], :]), interpolation='none', cmap='gray')
-    ax3.imshow(np.rot90(colorize_for_label_check(label)[:, pos[1], :, :]), interpolation='none', alpha = alpha)
+    ax3.imshow(np.rot90(colorize_for_label_check(img)[:, pos[1], :, :]), interpolation='none', alpha = alpha)
 
     ax4 = plt.subplot(234)
     plt.axis('off')
     #ax4.imshow(img[:, :, pos[2]], interpolation='none', cmap='gray')
-    ax4.imshow(colorize_for_label_check(clean_label)[:, :, pos[2], :], interpolation='none', alpha = alpha)
+    ax4.imshow(colorize_for_label_check(label)[:, :, pos[2], :], interpolation='none', alpha = alpha)
 
     ax5 = plt.subplot(235)
     plt.axis('off')
     #ax5.imshow(np.rot90(img[pos[0], :, :]), interpolation='none', cmap='gray')
-    ax5.imshow(np.rot90(colorize_for_label_check(clean_label)[pos[0], :, :, :]), interpolation='none', alpha = alpha)
+    ax5.imshow(np.rot90(colorize_for_label_check(label)[pos[0], :, :, :]), interpolation='none', alpha = alpha)
 
     ax6 = plt.subplot(236)
     plt.axis('off')
     #ax6.imshow(np.rot90(img[:, pos[1], :]), interpolation='none', cmap='gray')
-    ax6.imshow(np.rot90(colorize_for_label_check(clean_label)[:, pos[1], :, :]), interpolation='none', alpha = alpha)
+    ax6.imshow(np.rot90(colorize_for_label_check(label)[:, pos[1], :, :]), interpolation='none', alpha = alpha)
 
 
 
@@ -131,7 +131,7 @@ def check_slices_and_labels(path, pos, alpha):  # this dim is more like a positi
     return plt
 
 
-patient_path = '/med_data/Segmentation/AT/1_5T/PLIS_3609_GK/rework.mat'
+patient_path = '/med_data/Segmentation/AT/1_5T/PLIS2_3529_TL/rework.mat'
 #patient = Patient_AT(patient_path=patient_path, forget_slices=False)
 '''
 
@@ -142,6 +142,7 @@ for root, dirs, files in os.walk(data_path):
         patient_list.append(os.path.join(root, names))
 random.shuffle(patient_list)
 '''
+
 
 plt_test = check_slices_and_labels(patient_path, pos= [100, 100, 50], alpha = 1)
 plt_test.show()

@@ -1,18 +1,7 @@
-from libs.util import check_patients
 import numpy as np
-'''
-path = '/home/d1251/med_data/KORA/'
+import scipy.io as sio
+import os
+from vatscat.utils import load_patient_paths, load_data, merge_labels
+import random
+from vatscat.patient import Patient_AT
 
-lst_channel = ['fat0', 'water1']
-lst_class = ['liver', 'spleen']
-
-check_patients(path, lst_channel, lst_class, path_save = 'pickle-data/', verbose = True)
-'''
-
-a = np.ndarray()
-
-b = np.zeros([1,3])
-c = np.ones([1,3])
-
-res = np.concatenate((a,b), axis = 0)
-print(res)

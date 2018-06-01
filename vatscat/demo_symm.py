@@ -15,7 +15,12 @@ sys.path.insert(0,parentdir)
 #import os
 
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 1.0
+set_session(tf.Session(config=config))
 
 import keras
 import keras.backend as K
@@ -34,7 +39,9 @@ import libs.custom_metrics as custom_metrics
 import dccn_ori as models
 import libs.history as history
 from utils import dataset_split
-from train import fit
+from patient import load_correct_patient
+from libs.training import fit
+
 # paths to data (patients)
 path = "../patient-paths/patients_1_5T.pkl"
 
@@ -53,7 +60,9 @@ for i in range(4):
     print(' load patients and drop last validation patients')
 
     #do the data loading and preprocessing
-    train_path, validation_path, test_path = dataset_split(path, test_rate = 0.2, valid_train_rate = 0.1, shuffle = True, seed = 100)
+    train_path, validation_path, test_path = dataset_split(path, test_rate = 0.2, valid_train_rate = 0.1, shuffle = True)
+    patients_test, patients_train, patients_val, patients_val_slices = load_correct_patient(train_path, validation_path, test_path, forget_slices = True)
+
 
     # load model with parameters
     # receptive field: out_res < input_res
@@ -61,7 +70,7 @@ for i in range(4):
     print(' load model')
     res = 32  # input resolution
     Model = models.DenseNet3D(in_shape=(res, res, res, 1),  # input shape
-                              k=16,  # growth rate
+                              kls=16,  # growth rate
                               ls=[8, 8, 8, 12],  # layers in dense blocks
                               theta=0.5,  # compression factor
                               k_0=32,  # number of channels in input layer
@@ -94,17 +103,19 @@ for i in range(4):
     # train
     # postion: mult_inputs = True
     print(' training...')
-    hist_object = fit(model = Model,
-                      patients_train = train_path,
-                      patients_valid = validation_path,
-                      epochs = 50,
-                      batch_size = 64,
-                      patient_buffer_capacity = 16,
-                      batches_per_shift = 32,
-                      steps_valid = 128,
-                      border = 20,
-                      callbacks = [checkpointer],
-                      mult_inputs=False)
+    hist_object = fit(model=Model,
+                      patients_train=patients_train,
+                      data_valid=patients_val_slices,
+                      epochs=30,
+                      batch_size=48,
+                      patient_buffer_capacity=30,  # amount of patients on RAM
+                      batches_per_shift=5,  # batches_per_train_epoch = batches_per_shift * len(patients_train),
+                                             # batches out of buffer before one shift-operation, see every patient in one epoch!
+                      density=5,  # density for meshgrid of positions for validation data
+                      border=20,  # distance in pixel between crops
+                      callbacks=[checkpointer],  # callback (see keras documentation) for validation loss
+                      mult_inputs=False,  # if additional position at bottleneck, mult_inputs = True
+                      empty_patient_buffer=True)  # empty whole buffer, after training of one model (provide RAM for next model)
 
     print(' save histories')
     # list of histories

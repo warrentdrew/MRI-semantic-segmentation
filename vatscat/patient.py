@@ -7,15 +7,17 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
 
 from libs.util import Patient
-from utils import load_data, merge_labels
+from utils import load_data, merge_labels, show_slice_num, get_num_mat
 import numpy as np
 #import matplotlib
 #matplotlib.use('TkAgg') # Must be before importing matplotlib.pyplot or pylab!
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import math
-import cv2
 from skimage import color
+import time
+
 
 
 
@@ -25,7 +27,7 @@ def colorize(prediction, colors={0 : np.array([0,0,0]),     #class 0: background
                                  3 : np.array([1,0.2,0])  #class 3: SCAT          -> blue[0.1,0.1,1]     red
                                 }):
     """Colorize for patient-plots."""
-    #prediction here has dim 3
+    #prediction here need to have dim 3
     pred_picture = np.zeros(shape= prediction.shape[:2] + (3,))
     for x , row in enumerate(prediction):
         for y, col in enumerate(row):
@@ -134,7 +136,7 @@ class Patient_AT(Patient):
         return plt, fig
 
 
-    def plot_prediction_vs_ground_truth(self, depth, model, model_name):
+    def plot_prediction_vs_ground_truth(self, depth, model, model_name, border):
         """Plot prediction (left) vs ground truth (right)."""
         img, label  = self.get_slices(count=False)
 
@@ -144,7 +146,7 @@ class Patient_AT(Patient):
         labeled_slice = colorize(labeled_slice)
 
         #prediction = np.argmax(predict_patient(patient,model)[:,:,depth,:], axis=-1)
-        prediction = self.predict_patient(model)
+        prediction = self.predict_patient(model, border)
 
         prediction =  np.argmax(prediction[:,:,depth,:], axis=-1)
         prediction = colorize(prediction)
@@ -212,10 +214,10 @@ class Patient_AT(Patient):
         return plt
 
     def get_patient_id(self):
-        head1, tail1 = os.path.split(self.patient_path)
+        head1, _ = os.path.split(self.patient_path)
         head2, tail2 = os.path.split(head1)
         _, tail3 = os.path.split(head2)
-        id = os.path.join(os.path.join(tail3, tail2), tail1)
+        id = os.path.join(tail3, tail2)
         return id
 
     # def plot_mosaic_style(self, col): # this plots 3 images in mosaic style(for each slice): originals, predictions, labels
@@ -258,75 +260,109 @@ class Patient_AT(Patient):
     #
     #     return plt
 
-    def save_mosaic_style(self, col, space = 0, back = 0):
+    def save_mosaic_style(self, model, model_name, col, border, space = 0, back = 0, save_rt = '/home/d1251/Downloads/'):
         img, label = self.get_slices(count=False) #img shape x,y,z,1
         (h, w, slices, _) = img.shape
 
+        label = np.argmax(label, axis=-1)  # shape is x,y,1,1
+        #labeled_slice = colorize(labeled_slice)
+
+        prediction = self.predict_patient(model, border)
+        prediction = np.argmax(prediction, axis=-1)
+        #prediction = colorize(prediction)
+
         #compute num of rows and cols and spaces
         row = math.ceil(slices / col)
-        # if space is not 0:
-        #     vspace = back * (np.ones([h, space]))       #vspace stands for the vertical space on columns
-        #     hspace = back * (np.ones([space, (col * w + (col -1 ) * space)]))
-        # else:
-        #     vspace = hspace = 0
-
         slice_idx = 0
+        num_mat = get_num_mat('/home/d1251/no_backup/d1251/aux_file/numbers.mat')
+
         for i in range(row):
             for j in range(col):
                 if slice_idx < slices:
-                    f = img[:,:,slice_idx].reshape(img.shape[:2])
-                    data = f
-                    #f = show_numbers(f, slice_idx)
+                    f_img = img[:,:,slice_idx].reshape([h,w,1])
+                    f_label = colorize(label[:,:,slice_idx])
+                    f_pred = colorize(prediction[:,:,slice_idx])
+                    f_img = show_slice_num(f_img, num_mat, slice_idx+1).reshape([h,w])
+                    f_label = show_slice_num(f_label, num_mat, slice_idx + 1)
+                    f_pred = show_slice_num(f_pred, num_mat, slice_idx + 1)
                 else:
-                    data = np.zeros([h,w])
-
+                    f_img = np.zeros([h,w])
+                    f_label = f_pred = np.zeros([h,w,3])
                 if j == 0:
-                    R = data
+                    R_img = f_img
+                    R_label = f_label
+                    R_pred = f_pred
                 else:
                     if space is not 0:
                         vspace = back * (np.ones([h, space]))  # vspace stands for the vertical space on columns
-                        R = np.concatenate([R,vspace,data], axis=1)
+                        vspace_3c = back * (np.ones([h, space, 3]))  # vspace stands for the vertical space on columns
+                        R_img = np.concatenate([R_img,vspace,f_img], axis=1)
+                        R_label = np.concatenate([R_label, vspace_3c, f_label], axis=1)
+                        R_pred = np.concatenate([R_pred, vspace_3c, f_pred], axis=1)
+
                     else:
-                        R = np.concatenate([R,data], axis=1)
+                        R_img = np.concatenate([R_img,f_img], axis=1)
+                        R_label = np.concatenate([R_label, f_label], axis=1)
+                        R_pred = np.concatenate([R_pred, f_pred], axis=1)
                 slice_idx += 1
 
             if i == 0:
-                g = R
+                g_img = R_img
+                g_label = R_label
+                g_pred = R_pred
             else:
                 if space is not 0:
                     hspace = back * (np.ones([space, (col * w + (col - 1) * space)]))
-                    g = np.concatenate([g, hspace, R], axis=0)
+                    hspace_3c = back * (np.ones([space, (col * w + (col - 1) * space), 3]))
+                    g_img = np.concatenate([g_img, hspace, R_img], axis=0)
+                    g_label = np.concatenate([g_label, hspace_3c, R_label], axis=0)
+                    g_pred = np.concatenate([g_pred, hspace_3c, R_pred], axis=0)
                 else:
-                    g = np.concatenate([g, R], axis=0)
+                    g_img = np.concatenate([g_img, R_img], axis=0)
+                    g_label = np.concatenate([g_label, R_label], axis=0)
+                    g_pred = np.concatenate([g_pred, R_pred], axis=0)
 
 
-        fig = plt.figure(figsize=(100, 100), dpi=100)
-        plt.axis("off")
-        plt.imshow(g, cmap="gray")
-        fig.savefig("../img-test/newres.png")
-        plt.show()
+        patient_id = self.get_patient_id().replace('/', '_')
+        print('patient id:', patient_id)
+        fig1 = plt.figure(figsize=(50, 100), dpi=100)
+        plt.axis('off')
+        plt.imshow(g_img, cmap="gray")
+        fig1.savefig(os.path.join(save_rt, "{}-img__{}.png".format(model_name, patient_id)))
+        plt.close()
+
+
+        fig2 = plt.figure(figsize=(50, 100), dpi=100)
+        plt.axis('off')
+        plt.imshow(g_img, cmap="gray")
+        plt.imshow(g_pred, interpolation='none', alpha=0.3)
+        fig2.savefig(os.path.join(save_rt, "{}-pred__{}.png".format(model_name, patient_id)))
+        plt.close()
+
+        fig3 = plt.figure(figsize=(50, 100), dpi=100)
+        plt.axis('off')
+        plt.imshow(g_img, cmap="gray")
+        plt.imshow(g_label, interpolation='none', alpha=0.3)
+        fig3.savefig(os.path.join(save_rt, "{}-label__{}.png".format(model_name, patient_id)))
+        plt.close()
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-    def predict_patient(self, model):
+    def predict_patient(self, model, border):
         """Prediction of patient with special model."""
-        dicoms, _ = self.get_slices(count=False)
-        dishape = dicoms.shape
-        print('dishape:', dishape)
+        #original implementation neglect the remaining slices (or w, h) at the end
+        #new implementation add zero paddings at the boundary and remove them after prediction
+        #this func is now only suitable for input shape = output shape
+        #calculate the time for making prediction
+
+        imgs, _ = self.get_slices(count=False)
+        imgshape = imgs.shape
+        #print('imgshape:', imgshape)
+        start = time.time()
         outshape = model.get_output_shape_at(-1)[1:]
-        # inshape = model.internal_input_shapes
-        inshape = model.get_input_shape_at(0)
+        inshape = model.get_input_shape_at(0)[0]            #if pos is added, add [0] at the end
         if len(inshape) == 1:
             feedpos = False
         elif len(inshape) > 1:
@@ -334,43 +370,65 @@ class Patient_AT(Patient):
         else:
             raise 'no input'
 
-        # inshape = inshape[0][1:]
-        inshape = inshape[1:]  # input shape (32,32,32,1) output shape(32,32,32,4) dishape(256,192,105,1)
-        print('inshape:', inshape)
-        prediction_shape = dicoms.shape[:3] + (outshape[-1],)
-        prediction = np.zeros(prediction_shape)
-        prediction[:, :, :, 0] = np.ones(dicoms.shape[
-                                         :3])  # the default is that all the pixels are predicted as background, so the remainer during the cropping are classified as bg
-        deltas = tuple((np.array(inshape[:3]) - np.array(outshape[
-                                                         :3])) // 2)  # this is like the padding added outside the output of the input, to make it have the same shape as the input
+        inshape = inshape[1:]  # input shape (32,32,32,1) output shape(32,32,32,4) imgshape(256,192,105,1)
+        #print('inshape:', inshape)
+        deltas = tuple((np.array(inshape[:3]) - np.array(outshape[:3])) // 2)
+        # this is like the padding added outside the output of the input, to make it have the same shape as the input
         input_dict = {}
         #add a margin to make the prediction in the middle
-        margin_x = (dishape[0] - dishape[0] // inshape[0] * inshape[0] ) // 2
-        margin_y = (dishape[1] - dishape[1] // inshape[1] * inshape[1] ) // 2
-        margin_z = (dishape[2] - dishape[2] // inshape[2] * inshape[2]) // 2
-        print('margin x: {}, y:{}, z:{}'.format(margin_x,margin_y,margin_z))
-        for x in range(dishape[0] // inshape[0]):
-            for y in range(dishape[1] // inshape[1]):
-                for z in range(dishape[2] // inshape[2]):
+        margin_x = math.ceil(imgshape[0] / inshape[0]) * inshape[0] - imgshape[0]
+        margin_x_front = margin_x // 2
+        margin_x_end = margin_x - margin_x_front
+        margin_y = math.ceil(imgshape[1] / inshape[1]) * inshape[1] - imgshape[1]
+        margin_y_front = margin_y // 2
+        margin_y_end = margin_y - margin_y_front
+        margin_z = math.ceil(imgshape[2] / inshape[2]) * inshape[2] - imgshape[2]
+        #print('margin x: {}, y:{}, z:{}'.format(margin_x,margin_y,margin_z))
+        margin_z_front = margin_z // 2
+        margin_z_end = margin_z - margin_z_front
 
-                    input_dict['input_X'] = np.expand_dims(dicoms[x*inshape[0] + margin_x : (x +1) * inshape[0] + margin_x,
-                                                           y * inshape[1] + margin_y: (y + 1) * inshape[1] + margin_y,
-                                                           z * inshape[2] + margin_z: (z + 1) * inshape[2] + margin_z],
+        imgs = np.pad(imgs.reshape(imgs.shape[:3]), ((margin_x_front, margin_x_end), (margin_y_front, margin_y_end), (margin_z_front, margin_z_end)),
+                      mode='constant', constant_values= 0)
+        imgs = imgs.reshape(imgs.shape + (1,))
+
+        (shape_x, shape_y, shape_z, _) = newshape = imgs.shape
+        #print('new shape:', newshape)
+
+        prediction_shape = imgs.shape[:3] + (outshape[-1],)
+        prediction = np.zeros(prediction_shape)
+        prediction[:, :, :, 0] = np.ones(imgs.shape[:3])
+        # the default is that all the pixels are predicted as background, so the remainer during the cropping are classified as bg
+        for x in range(0, shape_x, inshape[0]):
+            for y in range(0, shape_y, inshape[1]):
+                for z in range(0, shape_z, inshape[2]):
+
+                    input_dict['input_X'] = np.expand_dims(imgs[x : x +inshape[0],
+                                                           y : y + inshape[1],
+                                                           z : z + inshape[2],:],
                                                            axis=0)
+
                     if feedpos:
-                        (size_x, size_y, size_z) = dishape[:3]
+                        (size_x, size_y, size_z) = imgshape[:3]
                         cropsize_X = inshape[0]
                         # hardcoded, see train-script
-                        border = 20
-                        max_pos = np.array(
-                            [size_x - cropsize_X - border, size_y - cropsize_X - border, size_z - cropsize_X - border])
+                        #border = 20
+                        max_pos = np.array([size_x - cropsize_X - border, size_y - cropsize_X - border, size_z - cropsize_X - border])
                         pos = np.array([x, y, z]) / max_pos
                         input_dict['input_position'] = np.expand_dims(pos, axis=0)
 
-                    prediction[x*inshape[0] + margin_x + deltas[0]: x*inshape[0] + margin_x + deltas[0] + outshape[0],
-                    y * inshape[1] + margin_y + deltas[1]: y * inshape[1] + margin_y + deltas[1] + outshape[1],
-                    z * inshape[2] + margin_z + deltas[2]: z * inshape[2] + margin_z + deltas[2] + outshape[2], :] = model.predict(
-                        input_dict)  # this ensures that only the most outside part the for whole image is predicted as bg
+                    #print('x{},y{},z{}'.format(x,y,z))
+                    prediction[x + deltas[0] : x + deltas[0] + outshape[0],
+                               y + deltas[1] : y + deltas[1] + outshape[1],
+                               z + deltas[2] : z + deltas[2] + outshape[2],:] = model.predict(
+                        input_dict)
+
+        #print('origin prediction shape', prediction.shape)
+        prediction = prediction[margin_x_front : shape_x-margin_x_end, margin_y_front : shape_y-margin_y_end, margin_z_front : shape_z-margin_z_end]
+        #print('final prediction shape', prediction.shape)
+        end = time.time()
+        duration = end - start
+        print('time for pred is:', duration)
+
         return prediction
 
 

@@ -10,7 +10,7 @@ from keras.layers import *
 from keras.models import load_model
 from blocks import denseBlock, transitionLayerPool, resize_3D
 from blocks import transitionLayerTransposeUp
-from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge
+from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge, MRGE_exp_blk_pr, transpose_conv3D_1x1_pr
 import libs.custom_metrics as custom_metrics
 from libs.training import fit
 from math import log2
@@ -21,7 +21,7 @@ Revision:
 1. removing of params at high level features
 2. change upsample into transpose conv
 """
-class MRGE():
+class MRGE_PR():
     '''
     __init__ function will build up the model with given hyperparams
     '''
@@ -47,12 +47,7 @@ class MRGE():
         x = in_
 
         for l in rls:            #rls for mege_net is [8,4,2,1,1]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
-            x, y = MR_block_split(k_0, lbda)(x)
-            block_num = int(log2(l) + 1)
-            rate_list = [2 ** i for i in range(block_num)]
-            for rate in rate_list[:-1]:
-                x, y = MR_GE_block('3D', filters= k_0, dilation_rate = rate, lbda = lbda)(x,y)
-            x = MR_GE_block_merge('3D', filters = k_0, dilation_rate = rate_list[-1], lbda=lbda)(x,y)
+            x = MRGE_exp_blk_pr('3D', filters = k_0, dilation_max = l, lbda = lbda)(x)
             shortcuts.append(x)
             x = MaxPool3D()(x)
             k_0 = int(2 * k_0)
@@ -70,24 +65,15 @@ class MRGE():
 
         if feed_pos:
             shape = x._keras_shape[1:4]
-            print('shape:',x.shape)
-            print('pos shape1:', pos.shape)
             pos = UpSampling3D(size=shape)(pos)
-            print('pos shape2:', pos.shape)
             x = Concatenate(axis=-1)([x, pos])
-            print('x shape:', x.shape)
+
 
         for l, shortcut in reversed(list(zip(self.rls, shortcuts))):  #start from transpose conv then mrge
-            x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),
-                            padding="same", kernel_initializer = 'he_normal', kernel_regularizer=regularizers.l2(lbda))(x)
+            x = transpose_conv3D_1x1_pr(filters = k_0, kernel_size = (3,3,3))(x)
             x = Add()([shortcut, x])
             k_0 = int(k_0 // 2)
-            x, y = MR_block_split(k_0, lbda)(x)
-            block_num = int(log2(l) + 1)
-            rate_list = [2 ** i for i in range(block_num)]
-            for rate in rate_list[:-1]:
-                x, y = MR_GE_block('3D', filters=k_0, dilation_rate=rate, lbda=lbda)(x, y)
-            x = MR_GE_block_merge('3D', filters=k_0, dilation_rate=rate_list[-1], lbda=lbda)(x, y)
+            x = MRGE_exp_blk_pr('3D', filters=k_0, dilation_max=l, lbda=lbda)(x)
 
         x = Conv3D(filters=4,
                    kernel_size=(1, 1, 1),

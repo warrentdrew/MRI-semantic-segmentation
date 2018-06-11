@@ -3,8 +3,78 @@ import keras.backend as K
 from keras.models import Model
 from keras.layers import *
 from math import log2
+'''
+basic blocks
+'''
+def bn_relu_conv_3x3(mode, filters, initializer, lbda, padding='same'):
+    if mode == '2D':
+        return lambda x : Conv2D(filters,
+                          kernel_size = (3, 3),
+                          strides= (1, 1),
+                          padding=padding,
+                          kernel_initializer = initializer,
+                          kernel_regularizer=regularizers.l2(lbda))(
+                              Activation('relu')(
+                              BatchNormalization()(x)))
+    else:
+        return lambda x: Conv3D(filters,
+                         kernel_size=(3, 3, 3),
+                         strides=(1, 1, 1),
+                         padding=padding,
+                         kernel_initializer=initializer,
+                         kernel_regularizer=regularizers.l2(lbda))(
+                                Activation('relu')(
+                                BatchNormalization()(x)))
+
+def bn_relu_conv_1x1(mode, filters, initializer, lbda, padding='same'):
+    if mode == '2D':
+        return lambda x : Conv2D(filters,
+                          kernel_size = (1, 1),
+                          strides= (1, 1),
+                          padding=padding,
+                          kernel_initializer = initializer,
+                          kernel_regularizer=regularizers.l2(lbda))(
+                              Activation('relu')(
+                              BatchNormalization()(x)))
+    else:
+        return lambda x: Conv3D(filters,
+                         kernel_size=(1, 1, 1),
+                         strides=(1, 1, 1),
+                         padding=padding,
+                         kernel_initializer=initializer,
+                         kernel_regularizer=regularizers.l2(lbda))(
+                            Activation('relu')(
+                            BatchNormalization()(x)))
+
+def relu_conv_1x1(mode, filters, initializer, lbda, padding='same'):
+    if mode == '2D':
+        return lambda x : Conv2D(filters,
+                          kernel_size = (1, 1),
+                          strides= (1, 1),
+                          padding=padding,
+                          kernel_initializer = initializer,
+                          kernel_regularizer=regularizers.l2(lbda))(
+                              Activation('relu')(x))
+
+    else:
+        return lambda x: Conv3D(filters,
+                         kernel_size=(1, 1, 1),
+                         strides=(1, 1, 1),
+                         padding=padding,
+                         kernel_initializer=initializer,
+                         kernel_regularizer=regularizers.l2(lbda))(
+                            Activation('relu')(x))
 
 
+def transpose_conv3D_1x1_pr(filters, kernel_size, strides=(2, 2, 2),
+                            padding="same", kernel_initializer = 'he_normal', lbda = 0):
+    def t_conv_pr_instance(x):
+        x = relu_conv_1x1('3D', filters // 2, initializer = kernel_initializer, lbda = lbda, padding=padding)(x)
+        x = Conv3DTranspose(filters= filters // 2, kernel_size=kernel_size, strides=strides,
+                            padding=padding, kernel_initializer = kernel_initializer, kernel_regularizer=regularizers.l2(lbda))(x)
+        x = relu_conv_1x1('3D', filters, initializer = kernel_initializer, lbda = lbda, padding=padding)(x)
+        return x
+    return t_conv_pr_instance
 '''
 Dilated conv idea and aspp from deeplab paper
 '''
@@ -109,8 +179,9 @@ def ASPP(mode, filters, strides, initializer, dilation_rate_list, image_level_po
 
         return ASPP_instance
 '''
-blocks for Merge and Run (MR) series: MRGE_net
+blocks for Merge and Run (MR) series: MRGE_net, MRGE_V2
 '''
+
 def MR_local_path(mode, filters, initializer, lbda, padding='same'):
     # implement a normal residual path in a residual block, which is used as a path in the merge and run net
     # the path is an improved scheme proposed in http://arxiv.org/pdf/1603.05027v2.pdf
@@ -149,6 +220,24 @@ def MR_global_path(mode, filters, dilation_rate, initializer, lbda, padding='sam
     return lambda x : DilatedConv(mode, filters, dilation_rate, initializer, lbda, padding)(x)
 
 
+def MR_local_pr(mode, filters, initializer, lbda, padding='same'):      #reduce half of the channels
+    def MR_local_pr_instance(x):
+        x = relu_conv_1x1(mode, filters = filters // 2,  initializer=initializer, lbda = lbda, padding= padding)(x)
+        x = bn_relu_conv_3x3(mode, filters=filters // 2, initializer=initializer, lbda=lbda, padding= padding)(x)
+        x = bn_relu_conv_3x3(mode, filters=filters // 2, initializer=initializer, lbda=lbda, padding= padding)(x)
+        out = relu_conv_1x1(mode, filters=filters, initializer=initializer, lbda=lbda, padding= padding)(x)
+        return out
+    return MR_local_pr_instance
+
+def MR_global_pr(mode, filters, dilation_rate, initializer, lbda, padding='same'):      #reduce half of the channels
+    def MR_global_pr_instance(x):
+        x = relu_conv_1x1(mode, filters = filters // 2,  initializer=initializer, lbda = lbda, padding= padding)(x)
+        x = DilatedConv(mode, filters = filters // 2,  dilation_rate = dilation_rate, initializer = initializer, lbda = lbda, padding=padding)(x)
+        out = relu_conv_1x1(mode, filters=filters, initializer=initializer, lbda=lbda, padding= padding)(x)
+        return out
+    return MR_global_pr_instance
+
+
 def MR_block(mode, filters, kernel_size, strides, initializer, lbda, padding='same'):
     # implementation of the merge-and-run block in https://arxiv.org/pdf/1611.07718.pdf
     def MR_instance(x,y):
@@ -175,6 +264,19 @@ def MR_GE_block(mode, filters, dilation_rate, lbda, kernel_initializer = 'he_nor
 
     return MR_instance
 
+def MR_GE_blk_pr(mode, filters, dilation_rate, lbda, kernel_initializer = 'he_normal',  padding='same'):
+    # GE stands for global enhanced
+    # a novel idea for combining local path with global path
+    def MR_instance(x,y):
+        mid = Add()([x,y])
+        x_conv = MR_local_pr(mode, filters, kernel_initializer, lbda, padding)(x)
+        y_conv = MR_global_pr(mode, filters, dilation_rate, kernel_initializer, lbda, padding)(y)
+        x_out = Add()([x_conv,mid])
+        y_out = Add()([y_conv,mid])
+        return x_out, y_out
+    return MR_instance
+
+
 def MR_block_split(filters, lbda, initializer = 'he_normal', padding = 'same'):
     def MR_split_instance(x):
         x = Conv3D(filters= filters,
@@ -188,6 +290,7 @@ def MR_block_split(filters, lbda, initializer = 'he_normal', padding = 'same'):
         x_out = y_out = x
         return x_out, y_out
     return MR_split_instance
+
 
 def MR_GE_block_merge(mode, filters, dilation_rate, lbda, kernel_initializer = 'he_normal', padding='same'):
     def MR_merge_instance(x,y):
@@ -209,8 +312,62 @@ def MRGE_exp_block(mode, filters, dilation_max, lbda):
         return x
     return MRGE_exp_instance
 
+def MRGE_exp_blk_pr(mode, filters, dilation_max, lbda):
+    def MRGE_exp_pr_instance(x):
+        x, y = MR_block_split(filters, lbda)(x)
+        block_num = int(log2(dilation_max) + 1)
+        rate_list = [2 ** i for i in range(block_num)]
+        for rate in rate_list[:-1]:
+            x, y = MR_GE_blk_pr(mode, filters=filters, dilation_rate=rate, lbda=lbda)(x, y)
+        x = MR_GE_block_merge(mode, filters=filters, dilation_rate=rate_list[-1], lbda=lbda)(x, y)
+        return x
+    return MRGE_exp_pr_instance
+
+'''
+def MRGE_exp_channel_reduced(mode, filters, dilation_max, lbda):
+    def MRGE_exp_cr_instance(x):
+        fin = filters // 4
+        x, y = MR_block_split(fin, lbda)(x)
+        block_num = int(log2(dilation_max) + 1)
+        rate_list = [2 ** i for i in range(block_num)]
+        for rate in rate_list[:-1]:
+            x, y = MR_GE_block(mode, filters=fin, dilation_rate=rate, lbda=lbda)(x, y)
+        x = MR_GE_block_merge(mode, filters=fin, dilation_rate=rate_list[-1], lbda=lbda)(x, y)
+
+        x = Conv3D(filters= filters,
+                   kernel_size=(1,1,1),
+                   strides=(1, 1, 1),
+                   padding='same',
+                   kernel_initializer= 'he_normal',
+                   kernel_regularizer=regularizers.l2(lbda))(
+                         Activation('relu')(
+                 BatchNormalization()(x)))
+
+        return x
+    return MRGE_exp_cr_instance
 
 
+def MRGE_inc_channel_reduced(mode, filters, dilation_max, lbda):
+    def MRGE_inc_cr_instance(x):
+        fin = filters // 2
+        x, y = MR_block_split(fin, lbda)(x)
+        for rate in range(dilation_max)[:-1]:
+            x, y = MR_GE_block(mode, filters=fin, dilation_rate=(rate+1), lbda=lbda)(x, y)
+        x = MR_GE_block_merge(mode, filters=fin, dilation_rate=dilation_max, lbda=lbda)(x, y)
+        x = Conv3D(filters=filters,
+                   kernel_size=(1, 1, 1),
+                   strides=(1, 1, 1),
+                   padding='same',
+                   kernel_initializer='he_normal',
+                   kernel_regularizer=regularizers.l2(lbda))(
+                Activation('relu')(
+                BatchNormalization()(x)))
+
+        return x
+
+    return MRGE_inc_cr_instance
+
+'''
 
 
 

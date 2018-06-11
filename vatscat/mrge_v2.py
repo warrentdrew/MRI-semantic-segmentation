@@ -10,9 +10,10 @@ from keras.layers import *
 from keras.models import load_model
 from blocks import denseBlock, transitionLayerPool, resize_3D
 from blocks import transitionLayerTransposeUp
-from blocks import MRGE_exp_block
+from blocks import MR_block_split, MRGE_exp_channel_reduced, MR_GE_block, MR_GE_block_merge, MRGE_inc_channel_reduced
 import libs.custom_metrics as custom_metrics
 from libs.training import fit
+from math import log2
 
 
 """
@@ -37,43 +38,40 @@ class MRGE_V2():
         shortcuts = []
         x = in_
 
-        for l in rls[:pooling_num]:            #rls for mege_v2 is [16,8,4,4,4]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
-            x = MRGE_exp_block('3D', filters = k_0, dilation_max = l, lbda = lbda)(x)
+        for l in rls[:pooling_num]:            #rls for mege_v2 is [8,4,2,2,2]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
+            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
             shortcuts.append(x)
             x = MaxPool3D()(x)
             k_0 = int(2 * k_0)
 
-        for l in rls[pooling_num:-1]:
-            x = MRGE_exp_block('3D', filters=k_0, dilation_max=l, lbda=lbda)(x)
-            shortcuts.append(x)
+        decode_filters = k_0 // 2
+        print('de fil:', decode_filters)
+
+        for l in rls[pooling_num:]:
+            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
             k_0 = int(2 * k_0)
 
 
-        x = MRGE_exp_block('3D', filters=k_0, dilation_max=rls[-1], lbda=lbda)(x)
-        k_0 = int(x.shape[-1]) // 2
-        print('k_0:', k_0)
+        x = Conv3D(decode_filters,
+                   kernel_size= (1,1,1),
+                   strides=(1,1,1),
+                   padding='same',
+                   kernel_initializer='he_normal',
+                   kernel_regularizer=regularizers.l2(lbda))(
+                   Activation('relu')(BatchNormalization()(x)))
+
 
         reverse_rls = list(reversed(self.rls))
-        reverse_short = list(reversed(shortcuts))
+        reverse_shortcut = list(reversed(shortcuts))
+        k_0 = decode_filters
 
-        for i, l in enumerate(reverse_rls[:(-pooling_num-1)]):
-            x = MRGE_exp_block('3D', filters=k_0, dilation_max=l, lbda=lbda)(x)
-            x = Add()([reverse_short[i], x])
-            k_0 = int(k_0 // 2)
-
-
-        x = MRGE_exp_block('3D', filters=k_0, dilation_max=reverse_rls[(-pooling_num-1)], lbda=lbda)(x)
-
-        print('k_0:', k_0)
         for i, l in enumerate(reverse_rls[-pooling_num:]):
             x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),
                                 padding="same", kernel_initializer='he_normal',
                                 kernel_regularizer=regularizers.l2(lbda))(x)
-            print('shape:', reverse_short[-pooling_num + i].shape[-1])
-            x = Add()([reverse_short[-pooling_num + i], x])
-            x = MRGE_exp_block('3D', filters=k_0, dilation_max=l, lbda=lbda)(x)
+            x = Add()([reverse_shortcut[i], x])
+            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
             k_0 = int(k_0 // 2)
-
 
         x = Conv3D(filters=4,
                    kernel_size=(1, 1, 1),
@@ -109,7 +107,7 @@ class MRGE_V2():
         for k, f in enumerate(m2):
             f.__name__ = 'm_gt_c' + str(k)
 
-        self.model.compile(optimizer='rmsprop',
+        self.model.compile(optimizer='adam',
                       loss=custom_metrics.jaccard_dist,
                       metrics=m1 + m2 + ['categorical_accuracy'] + [custom_metrics.jaccard_dist_discrete])
         print(' model compiled.')

@@ -6,7 +6,7 @@ sys.path.insert(0,parentdir)
 import argparse
 import os
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import keras
 import keras.backend as K
@@ -27,7 +27,7 @@ K.set_session(tf.Session(config=config))
 
 import libs.history as history
 from mrge_net import MRGE
-from utils import dataset_split
+from utils import dataset_split, load_patient_paths
 from patient import load_correct_patient
 
 
@@ -43,9 +43,9 @@ parser.add_argument('--lbda', default = 0, type = float, help = 'lambda for l2 r
 parser.add_argument('--out_res', default=None, type = int, help = 'output resolution')
 parser.add_argument('--with_pos', dest='pos', help = 'add position information in model', action = 'store_true')    #This is the same as mult_inputs
 parser.add_argument('--no_pos', dest='pos', help = 'add position information in model', action = 'store_false')
-parser.set_defaults(pos = False)
+parser.set_defaults(pos = True)
 parser.add_argument('--pos_noise_stdv', default = 0, type = float, help = 'noise for position')
-parser.add_argument('--epochs', default = 50, type = int)
+parser.add_argument('--epochs', default = 60, type = int)
 parser.add_argument('--batch_size', default= 48, type= int)
 parser.add_argument('--patient_buffer_capacity', default = 30, type=int)
 parser.add_argument('--batches_per_shift', default = 5, type = int)
@@ -62,15 +62,18 @@ args = parser.parse_args()
 # list for history-objects
 lhist = []
 
-# train model 4 times with k-fold cross validation
+#load patients list for the training
+patients_path_list = load_patient_paths(args.data_path, shuffle = True, seed = 100)
 
+# train model 4 times with k-fold cross validation
+k = 4
 for i in range(4):
 
     print(' round ' + str(i) + '!')
     print(' load patients and drop last validation patients')
 
     # do the data loading and preprocessing
-    train_path, validation_path, test_path = dataset_split(args.data_path, test_rate=0.2, valid_train_rate=0.05, shuffle=True, seed= 100)
+    train_path, validation_path, test_path = dataset_split(patients_path_list, k, i)
     patients_test, patients_train, patients_val, patients_val_slices = load_correct_patient(train_path, validation_path,
                                                                                             test_path,
                                                                                             forget_slices=True)
@@ -97,7 +100,7 @@ for i in range(4):
     network.model.summary()
 
     # saves the model weights after each epoch if the validation loss decreased
-    path_w = args.model_path + "k-fold-mrge-weights-" + str(i) + ".hdf5"
+    path_w = args.model_path + "k-fold-mrge-weights-pos" + str(i) + ".hdf5"
     checkpointer = cb.ModelCheckpoint(filepath=path_w, verbose=0, monitor='val_loss', save_best_only=True, save_weights_only=True)
 
     # train
@@ -109,5 +112,5 @@ for i in range(4):
     lhist.append(hist_object.history)
 
     # save history
-    path_hist = args.history_path + "k-fold-mrge"
+    path_hist = args.history_path + "k-fold-mrge-pos"
     history.save_histories(lhist=lhist, path=path_hist)

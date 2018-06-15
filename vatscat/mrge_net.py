@@ -70,12 +70,8 @@ class MRGE():
 
         if feed_pos:
             shape = x._keras_shape[1:4]
-            print('shape:',x.shape)
-            print('pos shape1:', pos.shape)
             pos = UpSampling3D(size=shape)(pos)
-            print('pos shape2:', pos.shape)
             x = Concatenate(axis=-1)([x, pos])
-            print('x shape:', x.shape)
 
         for l, shortcut in reversed(list(zip(self.rls, shortcuts))):  #start from transpose conv then mrge
             x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),

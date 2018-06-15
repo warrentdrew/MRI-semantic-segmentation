@@ -6,7 +6,7 @@ sys.path.insert(0,parentdir)
 import argparse
 import os
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
+os.environ["CUDA_VISIBLE_DEVICES"]="2"
 
 import keras
 import keras.backend as K
@@ -37,7 +37,7 @@ parser.add_argument('--data_path', default= '../patient-paths/patients_1_5T.pkl'
 parser.add_argument('--model_path', default= '/home/d1251/no_backup/d1251/models/', type = str)
 parser.add_argument('--history_path', default= '/home/d1251/no_backup/d1251/histories/', type = str)
 parser.add_argument('--in_size', default = 32, type = int)
-parser.add_argument('--rls', default = [8,4,2,2,2], type = list, help = 'layers in dense blocks')
+parser.add_argument('--rls', default = [16,8,4,4,4], type = list, help = 'layers in dense blocks')
 parser.add_argument('--k_0', default = 16, type = int, help = 'num of channel in input layer')
 parser.add_argument('--pooling_num', default = 2, type = int, help = 'number of maxpooling in the model')
 parser.add_argument('--lbda', default = 0, type = float, help = 'lambda for l2 reg')
@@ -49,7 +49,7 @@ parser.add_argument('--pos_noise_stdv', default = 0, type = float, help = 'noise
 parser.add_argument('--epochs', default = 50, type = int)
 parser.add_argument('--batch_size', default= 32, type= int)
 parser.add_argument('--patient_buffer_capacity', default = 30, type=int)
-parser.add_argument('--batches_per_shift', default = 10, type = int)
+parser.add_argument('--batches_per_shift', default = 5, type = int)
 parser.add_argument('--density', default= 5, type = int)
 parser.add_argument('--border', default= 5, type = int)
 parser.add_argument('--empty_buffer', dest='empty', help = 'empty whole buffer after training of one model', action = 'store_true')

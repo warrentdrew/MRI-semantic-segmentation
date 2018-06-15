@@ -364,21 +364,4 @@ def data_clean(rt_input, rt_output):
             print('write to:', os.path.join(save_path, names))
             sio.savemat(os.path.join(save_path, names), data_dict, do_compression= True)
 
-def get_num_mat(num_mat_path):
-    return sio.loadmat(num_mat_path)['n']
 
-def show_slice_num(img, num_mat, idx):
-    length = len(str(idx))
-    channels = img.shape[2]
-    fout = img
-    for i in reversed(range(length)):
-        digit = idx // (10 ** i)
-        idx = idx - digit * (10 ** i)
-        numimage = num_mat[:,:,digit]
-        numimage = numimage.reshape(numimage.shape + (1,))
-        if channels != 1:
-            numimage = np.repeat(numimage, channels, axis = 2)
-        offset = (length - 1 -i) * 6
-        fout[0:7, offset : offset + 5, :] = fout[0:7, offset : offset + 5, :] + (numimage / 255.0)
-    fout[fout > 1.0] = 1.0
-    return fout

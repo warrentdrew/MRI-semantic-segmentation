@@ -14,6 +14,8 @@ from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge
 import libs.custom_metrics as custom_metrics
 from libs.training import fit
 from math import log2
+import tensorflow as tf
+from train import fit_resume
 
 """
 This class implements a revised version of the original work DCCN
@@ -70,8 +72,12 @@ class MRGE():
 
         if feed_pos:
             shape = x._keras_shape[1:4]
+            print('shape:',x.shape)
+            print('pos shape1:', pos.shape)
             pos = UpSampling3D(size=shape)(pos)
+            print('pos shape2:', pos.shape)
             x = Concatenate(axis=-1)([x, pos])
+            print('x shape:', x.shape)
 
         for l, shortcut in reversed(list(zip(self.rls, shortcuts))):  #start from transpose conv then mrge
             x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),
@@ -144,6 +150,30 @@ class MRGE():
                           empty_patient_buffer=config.empty)  # empty whole buffer, after training of one model (provide RAM for next model)
 
         return hist_object
+
+    def resume(self, patients_train, patients_val_slices, checkpointer, config, init_epoch, model_path):
+        print('resume training...')
+        K.get_session().run(tf.global_variables_initializer())
+        self.model.load_weights(model_path)
+        self.compile()
+        hist_object = fit_resume(model=self.model,
+                          patients_train=patients_train,
+                          data_valid=patients_val_slices,
+                          epochs=config.epochs,
+                          batch_size=config.batch_size,
+                          patient_buffer_capacity=config.patient_buffer_capacity,  # amount of patients on RAM
+                          batches_per_shift=config.batches_per_shift,
+                          # batches_per_train_epoch = batches_per_shift * len(patients_train),
+                          # batches out of buffer before one shift-operation, see every patient in one epoch!
+                          density=config.density,  # density for meshgrid of positions for validation data
+                          border=config.border,  # distance in pixel between crops
+                          callbacks=[checkpointer],  # callback (see keras documentation) for validation loss
+                          mult_inputs=config.pos,  # if additional position at bottleneck, mult_inputs = True
+                          empty_patient_buffer=config.empty,    # empty whole buffer, after training of one model (provide RAM for next model)
+                          initial_epoch = init_epoch)
+
+        return hist_object
+
 
 
 

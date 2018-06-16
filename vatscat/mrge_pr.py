@@ -10,7 +10,7 @@ from keras.layers import *
 from keras.models import load_model
 from blocks import denseBlock, transitionLayerPool, resize_3D
 from blocks import transitionLayerTransposeUp
-from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge, MRGE_exp_blk_pr, transpose_conv3D_1x1_pr
+from blocks import MR_GE_block, MR_block_split, MR_GE_block_merge, MRGE_exp_blk_pr, transpose_conv3D_1x1_pr, MRGE_exp_blk_pr_no_bn, conv1x1_relu
 import libs.custom_metrics as custom_metrics
 from libs.training import fit
 from math import log2
@@ -54,6 +54,7 @@ class MRGE_PR():
 
         k_0 = int(x.shape[-1])
         #add one dense conv at the bottleneck, shift the dense block for the decoder to make it symmetric
+        '''
         x = Conv3D(filters= k_0,
                    kernel_size=(1,1,1),
                    strides=(1, 1, 1),
@@ -62,6 +63,8 @@ class MRGE_PR():
                    kernel_regularizer=regularizers.l2(lbda))(
                          Activation('relu')(
                          BatchNormalization()(x)))
+        '''
+        x = conv1x1_relu('3D', filters = k_0, initializer = 'he_normal', lbda = 0)(x)
 
         if feed_pos:
             shape = x._keras_shape[1:4]
@@ -80,9 +83,7 @@ class MRGE_PR():
                    strides=(1, 1, 1),
                    padding='same',
                    kernel_initializer='he_normal',
-                   kernel_regularizer=regularizers.l2(lbda))(
-                Activation('relu')(
-                BatchNormalization()(x)))
+                   kernel_regularizer=regularizers.l2(lbda))(x)
 
         if out_res is not None:
             resize = resize_3D(out_res=out_res)(x)

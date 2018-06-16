@@ -8,13 +8,11 @@ import keras.backend as K
 from keras.models import Model
 from keras.layers import *
 from keras.models import load_model
-from blocks import denseBlock, transitionLayerPool, resize_3D
-from blocks import transitionLayerTransposeUp
-from blocks import MR_block_split, MRGE_exp_channel_reduced, MR_GE_block, MR_GE_block_merge, MRGE_inc_channel_reduced
+from blocks import resize_3D
+from blocks import transpose_conv3D_1x1_pr, conv1x1_relu, MRGE_LE_exp_blk_pr
 import libs.custom_metrics as custom_metrics
 from libs.training import fit
 from math import log2
-
 
 """
 This class implements a revised version of the original work DCCN
@@ -22,65 +20,69 @@ Revision:
 1. removing of params at high level features
 2. change upsample into transpose conv
 """
-class MRGE_V2():
+class MRGE_LE():
     '''
     __init__ function will build up the model with given hyperparams
     '''
-    def __init__(self, in_shape, rls, k_0, pooling_num, lbda=0, out_res=None):
+    def __init__(self, in_shape, rls, k_0, lbda=0, out_res=None, feed_pos=False, pos_noise_stdv=0):
         self.in_shape = in_shape
         self.rls = rls
         self.k_0 = k_0
-        self.pooling_num = pooling_num
-
+        #self.out_res = out_res
+        #self.feed_pos = feed_pos
+        #self.pos_noise_stdv = pos_noise_stdv
+        #self.lbda = lbda
 
         in_ = Input(shape=in_shape, name='input_X')
+
+        if feed_pos:
+            in_pos = Input(shape=(3,), name='input_position')
+            pos = Reshape(target_shape=(1, 1, 1, 3))(in_pos)
+            if pos_noise_stdv != 0:
+                pos = GaussianNoise(pos_noise_stdv)(pos)
+            pos = BatchNormalization()(pos)
 
         shortcuts = []
         x = in_
 
-        for l in rls[:pooling_num]:            #rls for mege_v2 is [8,4,2,2,2]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
-            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
+        for l in rls:            #rls for mege_net is [8,4,2,1,1]    params = (mode, filters, dilation_rate, lbda, initializer, padding='same')
+            x = MRGE_LE_exp_blk_pr('3D', filters = k_0, dilation_max = l, lbda = lbda)(x)
             shortcuts.append(x)
             x = MaxPool3D()(x)
             k_0 = int(2 * k_0)
 
-        decode_filters = k_0 // 2
-        print('de fil:', decode_filters)
-
-        for l in rls[pooling_num:]:
-            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
-            k_0 = int(2 * k_0)
-
-
-        x = Conv3D(decode_filters,
-                   kernel_size= (1,1,1),
-                   strides=(1,1,1),
-                   padding='same',
-                   kernel_initializer='he_normal',
+        k_0 = int(x.shape[-1])
+        #add one dense conv at the bottleneck, shift the dense block for the decoder to make it symmetric
+        '''
+        x = Conv3D(filters= k_0,
+                   kernel_size=(1,1,1),
+                   strides=(1, 1, 1),
+                   padding= 'same',
+                   kernel_initializer= 'he_normal',
                    kernel_regularizer=regularizers.l2(lbda))(
-                   Activation('relu')(BatchNormalization()(x)))
+                         Activation('relu')(
+                         BatchNormalization()(x)))
+        '''
+        x = conv1x1_relu('3D', filters = k_0, initializer = 'he_normal', lbda = 0)(x)
+
+        if feed_pos:
+            shape = x._keras_shape[1:4]
+            pos = UpSampling3D(size=shape)(pos)
+            x = Concatenate(axis=-1)([x, pos])
 
 
-        reverse_rls = list(reversed(self.rls))
-        reverse_shortcut = list(reversed(shortcuts))
-        k_0 = decode_filters
-
-        for i, l in enumerate(reverse_rls[-pooling_num:]):
-            x = Conv3DTranspose(filters=k_0, kernel_size=(3, 3, 3), strides=(2, 2, 2),
-                                padding="same", kernel_initializer='he_normal',
-                                kernel_regularizer=regularizers.l2(lbda))(x)
-            x = Add()([reverse_shortcut[i], x])
-            x = MRGE_inc_channel_reduced('3D', k_0, l, lbda)(x)
+        for l, shortcut in reversed(list(zip(self.rls, shortcuts))):  #start from transpose conv then mrge
+            x = transpose_conv3D_1x1_pr(filters = k_0, kernel_size = (3,3,3))(x)
+            x = Add()([shortcut, x])
             k_0 = int(k_0 // 2)
+            x = MRGE_LE_exp_blk_pr('3D', filters=k_0, dilation_max=l, lbda=lbda)(x)
 
         x = Conv3D(filters=4,
                    kernel_size=(1, 1, 1),
                    strides=(1, 1, 1),
                    padding='same',
                    kernel_initializer='he_normal',
-                   kernel_regularizer=regularizers.l2(lbda))(
-                Activation('relu')(
-                BatchNormalization()(x)))
+                   kernel_regularizer=regularizers.l2(lbda))(x)
 
         if out_res is not None:
             resize = resize_3D(out_res=out_res)(x)
@@ -89,7 +91,10 @@ class MRGE_V2():
 
         #x = Conv3D(filters=3, kernel_size=(1, 1, 1))(x)
         out = Activation('softmax', name='output_Y')(x)
-        self.model = Model(in_, out)
+        if feed_pos:
+            self.model = Model([in_, in_pos], out)
+        else:
+            self.model = Model(in_, out)
 
 
     '''
@@ -107,7 +112,7 @@ class MRGE_V2():
         for k, f in enumerate(m2):
             f.__name__ = 'm_gt_c' + str(k)
 
-        self.model.compile(optimizer='adam',
+        self.model.compile(optimizer='rmsprop',
                       loss=custom_metrics.jaccard_dist,
                       metrics=m1 + m2 + ['categorical_accuracy'] + [custom_metrics.jaccard_dist_discrete])
         print(' model compiled.')

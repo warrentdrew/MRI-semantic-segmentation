@@ -6,7 +6,7 @@ sys.path.insert(0,parentdir)
 import argparse
 import os
 # choose GPU
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
+os.environ["CUDA_VISIBLE_DEVICES"]="2"
 
 import keras
 import keras.backend as K
@@ -17,11 +17,11 @@ K.set_image_data_format = 'channels_last'
 
 import tensorflow as tf
 #from keras.backend.tensorflow_backend import set_session
-config = K.tf.ConfigProto(intra_op_parallelism_threads = 1, inter_op_parallelism_threads = 1, allow_soft_placement = True, device_count = {'CPU': 1})
-config.gpu_options.per_process_gpu_memory_fraction = 0.95
+#config = K.tf.ConfigProto(intra_op_parallelism_threads = 1, inter_op_parallelism_threads = 1, allow_soft_placement = True, device_count = {'CPU': 1})
+#config.gpu_options.per_process_gpu_memory_fraction = 0.95
 #config.intra_op_parallelism_threads=1
 #config.inter_op_parallelism_threads=1
-K.set_session(tf.Session(config=config))
+#K.set_session(tf.Session(config=config))
 
 # import own scripts
 
@@ -38,7 +38,7 @@ parser.add_argument('--model_path', default= '/home/d1251/no_backup/d1251/models
 parser.add_argument('--history_path', default= '/home/d1251/no_backup/d1251/histories/', type = str)
 parser.add_argument('--in_size', default = 32, type = int)
 parser.add_argument('--rls', default = [8,4,2,1,1], type = list, help = 'layers in dense blocks')
-parser.add_argument('--k_0', default = 16, type = int, help = 'num of channel in input layer')
+parser.add_argument('--k_0', default = 32, type = int, help = 'num of channel in input layer')
 parser.add_argument('--lbda', default = 0, type = float, help = 'lambda for l2 reg')
 parser.add_argument('--out_res', default=None, type = int, help = 'output resolution')
 parser.add_argument('--with_pos', dest='pos', help = 'add position information in model', action = 'store_true')    #This is the same as mult_inputs
@@ -46,11 +46,11 @@ parser.add_argument('--no_pos', dest='pos', help = 'add position information in 
 parser.set_defaults(pos = True)
 parser.add_argument('--pos_noise_stdv', default = 0, type = float, help = 'noise for position')
 parser.add_argument('--epochs', default = 60, type = int)
-parser.add_argument('--batch_size', default= 48, type= int)
-parser.add_argument('--patient_buffer_capacity', default = 30, type=int)
-parser.add_argument('--batches_per_shift', default = 5, type = int)
+parser.add_argument('--batch_size', default= 16, type= int)
+parser.add_argument('--patient_buffer_capacity', default = 10, type=int)
+parser.add_argument('--batches_per_shift', default = 15, type = int)
 parser.add_argument('--density', default= 5, type = int)
-parser.add_argument('--border', default= 20, type = int)
+parser.add_argument('--border', default= 5, type = int)
 parser.add_argument('--empty_buffer', dest='empty', help = 'empty whole buffer after training of one model', action = 'store_true')
 parser.add_argument('--no_empty_buffer', dest='empty', help = 'empty whole buffer after training of one model', action = 'store_false')
 parser.set_defaults(empty = True)
@@ -74,7 +74,7 @@ for i in range(4):
 
     # do the data loading and preprocessing
     train_path, validation_path, test_path = dataset_split(patients_path_list, k, i)
-    patients_test, patients_train, patients_val, patients_val_slices = load_correct_patient(train_path, validation_path,
+    patients_train, patients_val, patients_test, patients_val_slices = load_correct_patient(train_path, validation_path,
                                                                                             test_path,
                                                                                             forget_slices=True)
 

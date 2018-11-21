@@ -1,0 +1,59 @@
+# KORA: 0.5 GB p.P., NAKO: 0.7 GB p.P.
+gpu_num : 0                                          # choose gpu
+
+Paths: 
+    test :                                           # TODO remove dummy
+
+Background_process : True
+    
+Pretrained_Model:
+    path : './weights_pretrained_models/nako/h0.h5'  # weights of a pretrained network
+    dim : 3                                          # dimension of crops of pretrained model (2D/3D)
+    pretrained_loss : jaccard_dist                   # if you want to use a pretrained model you have to name the loss which was used
+    train_crop_size : 32
+    out_res : 24
+    pikels : './patient_paths/kora/'                 # data on which you want to evaluate the model
+    amount_test_data : 13
+    lst_cl : ['liver', 'spleen']
+   
+Savefig:                                             
+    format : 'png'                                   # e.g. 'png','pdf' or 'svg'
+    transparent : True                               # the axes patches will all be transparent
+    bbox : 'tight'                                   # if ‘tight’, try to figure out the tight bbox of the figure  
+        
+Histories:
+    loss: True                            
+    val_recall : True
+    train_recall : True
+
+Prediction:
+    batch_size : 48                                  # parallel computation of predictions                              
+
+SegPlots:                                            # segmentation plots
+    plot : True
+    patient_nums : [0]                               # with which patients you want to make plots                                            
+    ground_truth : False
+    prediction_on_mri : False
+    prediction_vs_gt : False
+    heatmap : False
+    ground_truth_coronal : True
+    prediction_coronal : True
+    ch : 'water'                                     # MRI channels, water or fat
+    dim : [85,158,90]                                # dim = [x,y,z], (averaged maximum values for KORA [288,288,160]), good views KORA [85,158,90] and NAKO [125,100,150])
+    alpha : 0.3                                      # transparency level of labels/segmentation-masks on MRI, 0.0 transparent through 1.0 opaque
+    heatmap_cls : 1                                  # for which class do you want to plot the heatmap, classes = (0,1,2) [= ('background', 'liver', 'spleen')]
+
+Metrics: 
+    patient_num_start : 0 
+    patient_num_end: 13
+    sensitivity : True
+    specificity : True   
+    precision : True
+    false_negative_rate : True
+    false_positive_rate : True
+    dice : True
+    jaccard : True
+    accuracy : True
+
+
+      

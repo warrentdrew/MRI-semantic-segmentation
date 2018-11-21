@@ -1,0 +1,54 @@
+# KORA: 0.5 GB p.P., NAKO: 0.7 GB p.P.
+
+Paths: 
+    dicoms : '/tmp/med_data_local/'                   # KORA (iss)
+    labels : '/no_backup/med_data/NAKO/LiverSpleen/'  # if labels are seperated to mris (NAKO)
+    pikels : './patient_paths/kora/'                  # KORA, paths to dicoms and labels
+    gdcm : '/opt/gdcm-2.8.3/gdcmbin/bin/gdcmconv'     # on iss servers
+
+Data: 
+    decompress : False                               # decompress MRI (warning, overwrites raw data)
+    check : False                                    # check data on errors
+    lst_ch : ['water0','fat0']                       # channels of MRT data, at KORA you can choose between different water and fat channels (0-1)
+    lst_cl : ['liver', 'spleen']                     # classes for segmentation
+    dataset : 'KORA'                                 # KORA/NAKO
+    train_crop_size : 32                             # crop size for training data in pixel
+    dim : 3                                          # dimension of crops (2D/3D)
+    train_val_split : 0.2                            # e.g. 0.2 -> 80% train, 20% validation
+    k :                                              # k-fold crossvalidation
+    perc :                                           # k-fold crossvalidation, percentage of the training data to be used
+    amount_test_data : 13                            # amount of patients for testing
+    density : 5                                      # density**(dim) positions for cropping validation data
+    border : 20                                      # distance in pixel to edges
+
+Pretrained_Model:
+    path :                                           # weights of a pretrained network
+    dim :                                            # dimension of crops of pretrained model (2D/3D)
+    pretrained_loss :                                # if you want to use a pretrained model you have to name the loss which was used
+    out_res : 
+    
+Model:
+    name : DenseNet
+    k : 16                                           # growth rate (DenseNet)
+    ls : [8,8,8,12]                                  # layers in dense blocks (DenseNet)
+    theta : 0.5                                      # compression factor (DenseNet)
+    k_0: 32                                          # number of channels in input layer (DenseNet)
+    lbda : 0                                         # optional weight-decay
+    out_res : 24                                     # receptive field, opportunity for smaller output, out_res < in_res (train_crop_size)
+    feed_pos : True                                  # add position at bottleneck
+    pos_noise_stdv : 0                               # optional noice for position
+
+Training: 
+    gpu_num : 1                                      # choose gpu
+    seed : 0 
+    iterations : 5                                   # amount of training rounds
+    num_epochs : 50
+    train_loss: jaccard_dist                         # jaccard_dist = 1 - jaccard (it's also possible to use a keras loss)
+    batch_size : 48
+    patient_buffer_capacity : 12                     # amount of patients on RAM
+    batches_per_shift : 30                           # batches out of buffer before one shift-operation,
+                                                     # batches_per_train_epoch = batches_per_shift * len(patients_train), 
+                                                     # batches_per_train_epoch (same as steps_per_epoch in keras fit_generator), 
+                                                     # see every patient in one epoch ("one pass over the entire dataset")
+    optimizer : 'rmsprop'
+    background_process : True

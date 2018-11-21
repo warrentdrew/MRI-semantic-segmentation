@@ -1,0 +1,43 @@
+Paths:
+    data : './patient_paths/AT/patients_1_5T.pkl'     #default 1.5T, change if training on 3T
+    pretrained : './weights_pretrained_models/AT_MRGEN_1_5T/mrge-focal-0.hdf5'  #pretrained model path
+
+Preprocess:
+    in_size : 32                                      #input size
+    out_res : None                                    #output resolution
+    border : 5                                        #crop border in each patch
+
+CV:
+    k : 3                                             #k fold, None for not doing cross validation
+    test_num : 100                                    #set number of testing patients
+    validation_num: 30                                #set number of validation patients
+    train_num : 150                                   #set number of training patients
+    seed : 100                                        #seed for random choosing patients
+
+Model:
+    k_0 : 16                                          #number pf channel in input layer
+    rls : [8,4,2,1,1]                                 #maximum dilation rate in each stage
+    multi: False                                      #if multiply gpu are used
+    lbda : 0                                          # optional weight-decay
+    out_res :                                         # receptive field, opportunity for smaller output: out_res < in_res (train_crop_size)
+    feed_pos : True                                   # add position at bottleneck
+    pos_noise_stdv : 0                                # optional noice for position
+
+Training:
+    num_epochs : 60                                  # number of epochs
+    train_loss: focal_loss                           # focal loss and jaccard distance are provided
+    batch_size : 48
+    patient_buffer_capacity : 12                     # amount of patients on RAM
+    batches_per_shift : 30                           # batches out of buffer before one shift-operation,
+                                                     # batches_per_train_epoch = batches_per_shift * len(patients_train),
+                                                     # batches_per_train_epoch (same as steps_per_epoch in keras fit_generator),
+                                                     # see every patient in one epoch ("one pass over the entire dataset")
+    density : 5
+    optimizer : 'rmsprop'
+    empty : True                                     #empty the buffer on RAM for each round
+
+Testing:
+    model_name : 'mrge-focal-0.hdf5'                #model name for prediction
+    patient_path : ''
+
+Case: 'train'                                  #can be 'train', 'test', 'result', 'export'

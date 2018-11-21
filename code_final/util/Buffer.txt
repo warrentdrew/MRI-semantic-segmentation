@@ -1,0 +1,76 @@
+Patient Buffer - Dynamic Data Loading
+--------------------------------------------------------------------------------
+Brief description of the dynamic loading option  
+and its direct impact on RAM requirement.
+================================================================================
+
+1. Settings in fit(...) of training.py:
+
+Setting                 |Explanation                                    |Impact| 
+------------------------+-----------------------------------------------+------|
+patients_train          |List of patient-object instances (util.py),    |      |
+                        |method (load_slices(...)) to load mri.         |      |
+------------------------+-----------------------------------------------+------|
+data_valid              |List of patient-object instances for           |RAM   |
+                        |validation. These patients slices, (mri+labels)|      |
+                        |are loaded before the training and are kept in |      |
+                        |RAM during the whole training process,         |      | 
+                        |(see load_correct_patients(...) of util.py).   |      |
+------------------------+-----------------------------------------------+------+
+batch size              |Integer. Defining the amount of crops          |VRAM  |
+                        |per mini-batch.                                |      |
+                        |Note: Choose as high as possible               |      | 
+                        |      (limited by available VRAM).             |      |
+------------------------+-----------------------------------------------+------|
+patient_buffer_capacity |Integer. Defining the amount of training       |RAM   |      
+                        |patient-slices kept in RAM at each time.       |      |  
+                        |Note: One mini-batch should ideally represent  |      |
+                        |      the whole data set, i.e. setting         |      |
+                        |      patient_buffer_capacity too low may      |      |
+                        |      increase bias of gradients.              |      |
+------------------------+-----------------------------------------------+------|
+batches_per_shift       |Integer. Defining how many mini-batches        |      |
+                        |are drawn from the buffer before one           |      |
+                        |shift-operation.                               |      |
+                        |Shift-operation: slices of one patient         |      | 
+                        |are dropped from RAM and slices of a           |      | 
+                        |new patient are loaded on RAM.                 |      |
+                        |Pro-Tip: Choose this as low as possible        |      |
+                        |         (bias!), but high enough to prevent   |      |
+                        |         gpu from idling, i.e. figure out      |      |
+                        |         how many mini-batches are processed   |      |
+                        |         by gpu while loading slices of one    |      |
+                        |         new patient to RAM.                   |      |
+------------------------+-----------------------------------------------+------|
+empty_patient_buffer    |Boolean. Indicating whether a patient buffer   |RAM   |
+                        |will be emptied after training one model.      |      | 
+                        |Note: Important to set this "True" if you      |      |
+                        |      train more than one model within one     |      |
+                        |      script. Otherwise RAM is leaking!        |      |
+------------------------+-----------------------------------------------+------|
+
+(no setting, but good to know ;) )
+------------------------+-----------------------------------------------+------|
+max_q_size              |Integer. Maximum amount of preloaded crops.    |RAM/  |
+                        |Note: Default maximum length of queue is       |VRAM  |
+                        |      (batches_per_shift) + 1.                 |      |
+                        |      For further information see Keras docu.  |      |
+------------------------+-----------------------------------------------+------|
+
+2. Further hints:
+
+Setting                 |Explanation                                    |Impact|
+------------------------+-----------------------------------------------+------|
+patient_buffer_capacity |Calculating with approximately 0.5 GB          |RAM   | 
+                        |per patient (KORA dataset).                    |      |
+                        |Note: That's your greatest impact on RAM!      |      |
+------------------------+-----------------------------------------------+------|
+batches_per_shift       |Ex.: patient_buffer_capacity of 15 works       |      |
+                        |     well with batches_per_shift about 25.     |      |
+------------------------+-----------------------------------------------+------|
+data_valid              |Calculating with approximately 0.5 GB          |RAM   |
+                        |per patient (KORA dataset).                    |      |
+------------------------+-----------------------------------------------+------|
+empty_patient_buffer    |Set "True" if you train more                   |RAM   |
+                        |than one model in one run!                     |      |
+------------------------+-----------------------------------------------+------|

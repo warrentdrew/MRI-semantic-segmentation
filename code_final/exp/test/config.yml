@@ -1,0 +1,30 @@
+Data:
+  amount_test_data: 8
+  border: 20
+  check: false
+  dataset: KORA
+  decompress: false
+  density: 5
+  dim: 2
+  k: null
+  lst_ch: [water0, fat0]
+  lst_cl: [spleen, liver]
+  perc: null
+  train_crop_size: 32
+  train_val_split: 0.2
+Model:
+  feed_pos: true
+  k: 16
+  k_0: 32
+  lbda: 0
+  ls: [4, 8]
+  name: DenseNet
+  out_res: 24
+  pos_noise_stdv: 0
+  theta: 0.5
+Paths: {config: config/config.yml, data: /media/sarah/Extern/KORA_Kopie/, gdcm: gdcmconv,
+  histories: exp/test_new/histories/, model: exp/test_new/model/, save: exp/test_new}
+Pretrained_Model: {dim: 3, path: null}
+Training: {batch_size: 10, batches_per_shift: 5, gpu_num: 3, iterations: 1, num_epochs: 2,
+  optimizer: rmsprop, patient_buffer_capacity: 2, pretrained_loss: jaccard_dist, seed: 0,
+  train_loss: jaccard_dist}
